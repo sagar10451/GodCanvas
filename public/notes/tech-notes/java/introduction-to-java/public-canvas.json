@@ -4,33 +4,11 @@
     "topicSlug": "java",
     "subtopicSlug": "introduction-to-java",
     "title": "Introduction to Java",
-    "exportedAt": "2026-09-02T06:57:57.418Z"
+    "exportedAt": "2026-09-02T07:01:41.969Z"
   },
   "snapshot": {
     "document": {
       "store": {
-        "document:document": {
-          "gridSize": 10,
-          "name": "",
-          "meta": {},
-          "id": "document:document",
-          "typeName": "document"
-        },
-        "page:page": {
-          "meta": {},
-          "id": "page:page",
-          "name": "Page 1",
-          "index": "a1",
-          "typeName": "page"
-        },
-        "user:sxxdEB8d2xhZVtzxwRCTb": {
-          "name": "",
-          "color": "#BD54C6",
-          "imageUrl": "",
-          "meta": {},
-          "id": "user:sxxdEB8d2xhZVtzxwRCTb",
-          "typeName": "user"
-        },
         "shape:sYBWt9FpCaJyy52uYjuUh": {
           "x": 571.26953125,
           "y": 268.36328125,
@@ -72,6 +50,70 @@
           "parentId": "page:page",
           "index": "a1WAz",
           "typeName": "shape"
+        },
+        "shape:PsmPTZ4FZ3iuHqdBPelDc": {
+          "x": 627.203125,
+          "y": 344.5234375,
+          "rotation": 0,
+          "isLocked": false,
+          "opacity": 1,
+          "meta": {},
+          "id": "shape:PsmPTZ4FZ3iuHqdBPelDc",
+          "type": "text",
+          "props": {
+            "color": "black",
+            "size": "m",
+            "w": 93.328125,
+            "font": "draw",
+            "textAlign": "start",
+            "autoSize": true,
+            "scale": 1,
+            "richText": {
+              "type": "doc",
+              "attrs": {
+                "dir": "auto"
+              },
+              "content": [
+                {
+                  "type": "paragraph",
+                  "attrs": {
+                    "dir": "auto"
+                  },
+                  "content": [
+                    {
+                      "type": "text",
+                      "text": "hehehe"
+                    }
+                  ]
+                }
+              ]
+            }
+          },
+          "parentId": "page:page",
+          "index": "a2p7Q",
+          "typeName": "shape"
+        },
+        "user:sxxdEB8d2xhZVtzxwRCTb": {
+          "name": "",
+          "color": "#BD54C6",
+          "imageUrl": "",
+          "meta": {},
+          "id": "user:sxxdEB8d2xhZVtzxwRCTb",
+          "typeName": "user"
+        },
+        "page:page": {
+          "meta": {},
+          "id": "page:page",
+          "name": "Page 1",
+          "index": "a1",
+          "typeName": "page"
+        },
+        "document:document": {
+          "gridSize": 10,
+          "name": "",
+          "meta": {},
+          "id": "document:document",
+          "typeName": "document"
         }
       },
       "schema": {
