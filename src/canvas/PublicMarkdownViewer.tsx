@@ -244,14 +244,21 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
                 h2: ({ children }) => <HeadingRenderer level={2}>{children}</HeadingRenderer>,
                 h3: ({ children }) => <HeadingRenderer level={3}>{children}</HeadingRenderer>,
                 h4: ({ children }) => <HeadingRenderer level={4}>{children}</HeadingRenderer>,
-                img: ({ src, alt }) => (
-                  <img
-                    src={src}
-                    alt={alt || 'image'}
-                    className="max-w-full rounded-lg shadow-md my-4"
-                    loading="lazy"
-                  />
-                ),
+                img: ({ src, alt, width, ...props }) => {
+                  const align = (props as any)['data-align'] || 'left';
+                  const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';
+                  return (
+                    <div style={{ display: 'flex', justifyContent: justify }} className="my-4">
+                      <img
+                        src={src}
+                        alt={alt || 'image'}
+                        className="rounded-lg shadow-md"
+                        style={{ width: width ? String(width) : '100%', maxWidth: '100%' }}
+                        loading="lazy"
+                      />
+                    </div>
+                  );
+                },
               }}
             >
               {data.content}

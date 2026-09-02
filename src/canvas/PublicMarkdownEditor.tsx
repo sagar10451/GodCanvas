@@ -74,15 +74,18 @@ function CodeBlock({ children, className }: { children: string; className?: stri
   );
 }
 
-/** Resizable image component for preview mode */
-function ResizableImage({ src, alt, imgId: _imgId, initialWidth, onResize }: {
+/** Resizable + alignable image component for preview mode */
+function ResizableImage({ src, alt, imgId: _imgId, initialWidth, initialAlign, onResize, onAlign }: {
   src: string;
   alt: string;
   imgId: string;
   initialWidth: string;
+  initialAlign: string;
   onResize: (newWidth: string) => void;
+  onAlign: (align: string) => void;
 }) {
   const [width, setWidth] = useState(initialWidth);
+  const [align, setAlign] = useState(initialAlign || 'left');
   const containerRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
 
@@ -113,33 +116,59 @@ function ResizableImage({ src, alt, imgId: _imgId, initialWidth, onResize }: {
     document.addEventListener('mouseup', handleMouseUp);
   }, [width, onResize]);
 
-  // Sync width when onResize is called
-  useEffect(() => {
-    // After drag, update once more with the final width
-  }, []);
+  const handleAlign = useCallback((newAlign: string) => {
+    setAlign(newAlign);
+    onAlign(newAlign);
+  }, [onAlign]);
+
+  const justifyStyle: Record<string, string> = {
+    left: 'flex-start',
+    center: 'center',
+    right: 'flex-end',
+  };
 
   return (
     <div
-      ref={containerRef}
-      className="relative inline-block my-4 group"
-      style={{ width }}
+      className="flex my-4"
+      style={{ justifyContent: justifyStyle[align] || 'flex-start' }}
     >
-      <img
-        src={src}
-        alt={alt}
-        className="w-full rounded-lg shadow-md"
-        loading="lazy"
-        draggable={false}
-      />
-      {/* Resize handle — right edge */}
       <div
-        className="absolute top-0 right-0 w-3 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
-        style={{ background: 'linear-gradient(to right, transparent, rgba(59,130,246,0.3))' }}
-        onMouseDown={handleMouseDown}
-      />
-      {/* Width label */}
-      <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
-        {width}
+        ref={containerRef}
+        className="relative group"
+        style={{ width }}
+      >
+        <img
+          src={src}
+          alt={alt}
+          className="w-full rounded-lg shadow-md"
+          loading="lazy"
+          draggable={false}
+        />
+        {/* Alignment buttons — top center */}
+        <div className="absolute -top-8 left-1/2 -translate-x-1/2 flex items-center gap-0.5 bg-slate-800/90 rounded-lg px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+          <button
+            onClick={() => handleAlign('left')}
+            className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-all ${align === 'left' ? 'bg-blue-500 text-white' : 'text-slate-300 hover:text-white'}`}
+          >L</button>
+          <button
+            onClick={() => handleAlign('center')}
+            className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-all ${align === 'center' ? 'bg-blue-500 text-white' : 'text-slate-300 hover:text-white'}`}
+          >C</button>
+          <button
+            onClick={() => handleAlign('right')}
+            className={`px-2 py-0.5 rounded text-[9px] font-semibold transition-all ${align === 'right' ? 'bg-blue-500 text-white' : 'text-slate-300 hover:text-white'}`}
+          >R</button>
+        </div>
+        {/* Resize handle — right edge */}
+        <div
+          className="absolute top-0 right-0 w-3 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
+          style={{ background: 'linear-gradient(to right, transparent, rgba(59,130,246,0.3))' }}
+          onMouseDown={handleMouseDown}
+        />
+        {/* Width + align label */}
+        <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+          {width} · {align}
+        </div>
       </div>
     </div>
   );
@@ -379,23 +408,48 @@ export default function PublicMarkdownEditor({
                         }
                         return <code className="inline-code" {...props}>{children}</code>;
                       },
-                      img: ({ src, alt, id, width }) => (
-                        <ResizableImage
-                          src={src || ''}
-                          alt={alt || 'image'}
-                          imgId={id || ''}
-                          initialWidth={width ? String(width) : '100%'}
-                          onResize={(newWidth) => {
-                            if (!id) return;
-                            // Update the width in the raw markdown
-                            setContent(prev => prev.replace(
-                              new RegExp(`(<img[^>]*id="${id}"[^>]*?)width="[^"]*"`),
-                              `$1width="${newWidth}"`
-                            ));
-                            setIsSaved(false);
-                          }}
-                        />
-                      ),
+                      img: ({ src, alt, id, width, ...props }) => {
+                        const align = (props as any)['data-align'] || 'left';
+                        return (
+                          <ResizableImage
+                            src={src || ''}
+                            alt={alt || 'image'}
+                            imgId={id || ''}
+                            initialWidth={width ? String(width) : '100%'}
+                            initialAlign={align}
+                            onResize={(newWidth) => {
+                              if (!id) return;
+                              setContent(prev => prev.replace(
+                                new RegExp(`(<img[^>]*id="${id}"[^>]*?)width="[^"]*"`),
+                                `$1width="${newWidth}"`
+                              ));
+                              setIsSaved(false);
+                            }}
+                            onAlign={(newAlign) => {
+                              if (!id) return;
+                              setContent(prev => {
+                                let updated = prev;
+                                if (updated.includes(`id="${id}"`)) {
+                                  // Update or add data-align
+                                  if (updated.match(new RegExp(`(<img[^>]*id="${id}"[^>]*?)data-align="[^"]*"`))) {
+                                    updated = updated.replace(
+                                      new RegExp(`(<img[^>]*id="${id}"[^>]*?)data-align="[^"]*"`),
+                                      `$1data-align="${newAlign}"`
+                                    );
+                                  } else {
+                                    updated = updated.replace(
+                                      new RegExp(`(<img[^>]*id="${id}")`),
+                                      `$1 data-align="${newAlign}"`
+                                    );
+                                  }
+                                }
+                                return updated;
+                              });
+                              setIsSaved(false);
+                            }}
+                          />
+                        );
+                      },
                     }}
                   >
                     {content}
