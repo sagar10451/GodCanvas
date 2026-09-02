@@ -50,7 +50,7 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
   return (
     <div className="w-full min-h-[calc(100vh-78px)] bg-white">
       {/* Article */}
-      <article className="max-w-[800px] mx-auto px-6 sm:px-8 py-10 sm:py-14">
+      <article className="max-w-[1000px] mx-auto px-6 sm:px-10 lg:px-16 py-10 sm:py-14">
         {/* Title */}
         <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight leading-tight mb-8 pb-6 border-b-2 border-gray-100">
           {title}

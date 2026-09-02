@@ -6,7 +6,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { Save, Download, Upload, Eye, Edit3 } from 'lucide-react';
+import { Save, Upload, Eye, Edit3 } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import rehypeRaw from 'rehype-raw';
@@ -123,13 +123,16 @@ export default function PublicMarkdownEditor({
     setIsSaved(true);
   }, [siteId, topicSlug, subtopicSlug, buildSaveData]);
 
-  // Export — save to project folder
-  const handleExport = useCallback(async () => {
+  // Export & Publish — save to project folder then push to GitHub
+  const handleExportAndPublish = useCallback(async () => {
     if (!content.trim()) {
-      showToast('Content is empty — add markdown before exporting', 'error');
+      showToast('Content is empty — add markdown before publishing', 'error');
       return;
     }
     const data = buildSaveData();
+
+    // Step 1: Save file
+    showToast('Saving...', 'success');
     try {
       const res = await fetch('/__save-public-canvas', {
         method: 'POST',
@@ -137,18 +140,17 @@ export default function PublicMarkdownEditor({
         body: JSON.stringify({ siteId, topicSlug, subtopicSlug, data }),
       });
       const result = await res.json();
-      if (result.success) {
-        showToast('Saved successfully', 'success');
-      } else {
+      if (!result.success) {
         showToast('Save failed: ' + result.error, 'error');
+        return;
       }
     } catch {
       showToast('Save failed — is dev server running?', 'error');
+      return;
     }
-  }, [content, siteId, topicSlug, subtopicSlug, buildSaveData, showToast]);
 
-  // Publish — git push
-  const handlePublish = useCallback(async () => {
+    // Step 2: Push to GitHub
+    showToast('Pushing to GitHub...', 'success');
     try {
       const res = await fetch('/__publish', {
         method: 'POST',
@@ -158,9 +160,9 @@ export default function PublicMarkdownEditor({
       const result = await res.json();
       if (result.success) {
         if (result.message === 'No changes to publish') {
-          showToast('No changes to publish — export first', 'error');
+          showToast('No changes to publish', 'error');
         } else {
-          showToast('Pushed to GitHub — Vercel will auto-deploy', 'success');
+          showToast('Published — Vercel will auto-deploy', 'success');
         }
       } else {
         showToast('Push failed: ' + result.error, 'error');
@@ -168,7 +170,7 @@ export default function PublicMarkdownEditor({
     } catch {
       showToast('Push failed — check SSH key and network', 'error');
     }
-  }, [topicSlug, subtopicSlug, showToast]);
+  }, [content, siteId, topicSlug, subtopicSlug, buildSaveData, showToast]);
 
   // Handle paste — intercept images from clipboard
   const handlePaste = useCallback(async (e: React.ClipboardEvent) => {
@@ -248,13 +250,9 @@ export default function PublicMarkdownEditor({
           <button onClick={handleSave} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isSaved ? 'bg-emerald-800 text-emerald-400' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>
             <Save className="w-3.5 h-3.5" />{isSaved ? 'Saved' : 'Save'}
           </button>
-          <button onClick={handleExport} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-800 text-emerald-100 hover:bg-emerald-700 transition-all">
-            <Download className="w-3.5 h-3.5" />
-            Export
-          </button>
-          <button onClick={handlePublish} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 text-blue-100 hover:bg-blue-600 transition-all">
+          <button onClick={handleExportAndPublish} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 text-blue-100 hover:bg-blue-600 transition-all">
             <Upload className="w-3.5 h-3.5" />
-            Publish
+            Export & Publish
           </button>
         </div>
       </div>
