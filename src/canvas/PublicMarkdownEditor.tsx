@@ -74,6 +74,77 @@ function CodeBlock({ children, className }: { children: string; className?: stri
   );
 }
 
+/** Resizable image component for preview mode */
+function ResizableImage({ src, alt, imgId: _imgId, initialWidth, onResize }: {
+  src: string;
+  alt: string;
+  imgId: string;
+  initialWidth: string;
+  onResize: (newWidth: string) => void;
+}) {
+  const [width, setWidth] = useState(initialWidth);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const isDragging = useRef(false);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isDragging.current = true;
+    const startX = e.clientX;
+    const startWidth = containerRef.current?.offsetWidth || 400;
+
+    const handleMouseMove = (ev: MouseEvent) => {
+      if (!isDragging.current) return;
+      const delta = ev.clientX - startX;
+      const newPx = Math.max(100, startWidth + delta);
+      const parentWidth = containerRef.current?.parentElement?.offsetWidth || 800;
+      const pct = Math.min(100, Math.round((newPx / parentWidth) * 100));
+      setWidth(`${pct}%`);
+    };
+
+    const handleMouseUp = () => {
+      isDragging.current = false;
+      onResize(width);
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+  }, [width, onResize]);
+
+  // Sync width when onResize is called
+  useEffect(() => {
+    // After drag, update once more with the final width
+  }, []);
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative inline-block my-4 group"
+      style={{ width }}
+    >
+      <img
+        src={src}
+        alt={alt}
+        className="w-full rounded-lg shadow-md"
+        loading="lazy"
+        draggable={false}
+      />
+      {/* Resize handle — right edge */}
+      <div
+        className="absolute top-0 right-0 w-3 h-full cursor-ew-resize opacity-0 group-hover:opacity-100 transition-opacity"
+        style={{ background: 'linear-gradient(to right, transparent, rgba(59,130,246,0.3))' }}
+        onMouseDown={handleMouseDown}
+      />
+      {/* Width label */}
+      <div className="absolute bottom-2 right-2 bg-black/60 text-white text-[9px] px-1.5 py-0.5 rounded opacity-0 group-hover:opacity-100 transition-opacity">
+        {width}
+      </div>
+    </div>
+  );
+}
+
 export default function PublicMarkdownEditor({
   topicSlug,
   subtopicSlug,
@@ -189,14 +260,14 @@ export default function PublicMarkdownEditor({
 
         const start = textarea.selectionStart;
         const end = textarea.selectionEnd;
-        const imgMarkdown = `![screenshot](${dataUrl})`;
-        const newContent = content.substring(0, start) + imgMarkdown + content.substring(end);
+        const imgId = `img-${Date.now()}`;
+        const imgHtml = `<img id="${imgId}" src="${dataUrl}" width="100%" />`;
+        const newContent = content.substring(0, start) + '\n' + imgHtml + '\n' + content.substring(end);
         setContent(newContent);
         setIsSaved(false);
 
-        // Move cursor after the inserted image
         setTimeout(() => {
-          textarea.selectionStart = textarea.selectionEnd = start + imgMarkdown.length;
+          textarea.selectionStart = textarea.selectionEnd = start + imgHtml.length + 2;
           textarea.focus();
         }, 0);
         return;
@@ -308,12 +379,21 @@ export default function PublicMarkdownEditor({
                         }
                         return <code className="inline-code" {...props}>{children}</code>;
                       },
-                      img: ({ src, alt }) => (
-                        <img
-                          src={src}
+                      img: ({ src, alt, id, width }) => (
+                        <ResizableImage
+                          src={src || ''}
                           alt={alt || 'image'}
-                          className="max-w-full rounded-lg shadow-md my-4"
-                          loading="lazy"
+                          imgId={id || ''}
+                          initialWidth={width ? String(width) : '100%'}
+                          onResize={(newWidth) => {
+                            if (!id) return;
+                            // Update the width in the raw markdown
+                            setContent(prev => prev.replace(
+                              new RegExp(`(<img[^>]*id="${id}"[^>]*?)width="[^"]*"`),
+                              `$1width="${newWidth}"`
+                            ));
+                            setIsSaved(false);
+                          }}
                         />
                       ),
                     }}
