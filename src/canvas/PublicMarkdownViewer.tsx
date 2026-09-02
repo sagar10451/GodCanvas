@@ -76,20 +76,22 @@ function HeadingRenderer({ level, children }: { level: number; children: React.R
   return <h4 id={id}>{children}</h4>;
 }
 
-/** Check if a heading at index `idx` has children (next heading is deeper level) */
-function hasChildren(headings: TocItem[], idx: number): boolean {
-  if (idx >= headings.length - 1) return false;
-  return headings[idx + 1].level > headings[idx].level;
-}
-
-/** Check if a heading at index `idx` is the last child at its level within its parent group */
-function isLastChild(headings: TocItem[], idx: number): boolean {
+/** For each heading, determine which ancestor depth levels still have siblings below */
+function getActiveLevels(headings: TocItem[], idx: number, minLevel: number): Set<number> {
+  const active = new Set<number>();
   const current = headings[idx];
-  for (let i = idx + 1; i < headings.length; i++) {
-    if (headings[i].level < current.level) return true; // hit parent — we were last
-    if (headings[i].level === current.level) return false; // sibling found
+  // For each depth from 0 to current depth, check if there's a sibling at that level below
+  for (let d = 0; d <= current.level - minLevel; d++) {
+    const targetLevel = minLevel + d;
+    for (let j = idx + 1; j < headings.length; j++) {
+      if (headings[j].level < targetLevel) break; // went above this level — no more siblings
+      if (headings[j].level === targetLevel) {
+        active.add(d);
+        break;
+      }
+    }
   }
-  return true; // end of list
+  return active;
 }
 
 /** TOC Sidebar with tree lines */
@@ -112,27 +114,29 @@ function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: str
         {headings.map((item, i) => {
           const depth = item.level - minLevel;
           const isActive = item.id === activeId;
-          const hasKids = hasChildren(headings, i);
-          const isLast = isLastChild(headings, i);
+          const activeLevels = getActiveLevels(headings, i, minLevel);
 
           return (
             <div key={`${item.id}-${i}`} className="relative" style={{ paddingLeft: depth * 16 }}>
-              {/* Vertical line from parent */}
-              {depth > 0 && (
-                <div
-                  className="absolute border-l border-gray-300"
-                  style={{
-                    left: (depth - 1) * 16 + 8,
-                    top: 0,
-                    bottom: isLast && !hasKids ? '50%' : 0,
-                    width: 1,
-                  }}
-                />
-              )}
+              {/* Continuous vertical lines for each ancestor level that has more siblings */}
+              {Array.from({ length: depth }, (_, d) => (
+                activeLevels.has(d) || d === depth - 1 ? (
+                  <div
+                    key={d}
+                    className="absolute border-l border-gray-200"
+                    style={{
+                      left: d * 16 + 8,
+                      top: 0,
+                      bottom: d === depth - 1 && !activeLevels.has(depth - 1) ? '50%' : 0,
+                      width: 1,
+                    }}
+                  />
+                ) : null
+              ))}
               {/* Horizontal branch line */}
               {depth > 0 && (
                 <div
-                  className="absolute border-t border-gray-300"
+                  className="absolute border-t border-gray-200"
                   style={{
                     left: (depth - 1) * 16 + 8,
                     top: '50%',
