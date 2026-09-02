@@ -296,8 +296,10 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
           background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
         }}
       >
-        <div className="px-4 pt-8 pb-4">
+        <div className="px-4 py-6">
+          <div className="pb-2" />
           <TocSidebar headings={headings} activeId={activeId} />
+          <div className="pt-6" />
         </div>
       </aside>
     </div>
