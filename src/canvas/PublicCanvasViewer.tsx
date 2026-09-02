@@ -1,10 +1,9 @@
 /**
  * PublicCanvasViewer — renders a public canvas as a read-only vertical-scroll view.
- * Used on production (Vercel). Loads a static JSON file and renders with tldraw.
  * 
- * The tldraw canvas has pointer-events: none — it cannot receive any user input.
- * A transparent overlay captures wheel events and programmatically moves the camera.
- * This is bulletproof — no gesture, touch, or scroll can bypass it.
+ * Uses a requestAnimationFrame loop to FORCE the camera position every frame.
+ * tldraw cannot override this — even if its internal systems try to move the camera,
+ * our loop immediately corrects it.
  */
 
 import { useCallback, useRef, useEffect } from 'react';
@@ -24,9 +23,14 @@ interface PublicCanvasViewerProps {
 
 export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerProps) {
   const editorRef = useRef<Editor | null>(null);
-  const boundsRef = useRef<{ minX: number; minY: number; maxX: number; maxY: number; contentW: number; contentH: number } | null>(null);
-  const fixedXRef = useRef<number>(0);
   const overlayRef = useRef<HTMLDivElement>(null);
+
+  // The ONLY camera state — our source of truth
+  const cameraYRef = useRef(0);
+  const fixedXRef = useRef(0);
+  const topLimitRef = useRef(0);
+  const bottomLimitRef = useRef(0);
+  const readyRef = useRef(false);
 
   // Kill all page scrolling
   useEffect(() => {
@@ -36,7 +40,25 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
     };
   }, []);
 
-  // Custom scroll handler on the overlay div
+  // RAF loop — forces camera position every single frame
+  useEffect(() => {
+    let animId: number;
+    const tick = () => {
+      const editor = editorRef.current;
+      if (editor && readyRef.current) {
+        const cam = editor.getCamera();
+        // If tldraw moved the camera away from our position, force it back
+        if (cam.x !== fixedXRef.current || cam.y !== cameraYRef.current || cam.z !== 1) {
+          editor.setCamera({ x: fixedXRef.current, y: cameraYRef.current, z: 1 });
+        }
+      }
+      animId = requestAnimationFrame(tick);
+    };
+    animId = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(animId);
+  }, []);
+
+  // Wheel handler — updates our Y ref, clamped to bounds
   useEffect(() => {
     const overlay = overlayRef.current;
     if (!overlay) return;
@@ -44,31 +66,46 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();
+      if (!readyRef.current) return;
 
-      const editor = editorRef.current;
-      const bounds = boundsRef.current;
-      if (!editor || !bounds) return;
+      let newY = cameraYRef.current - e.deltaY;
 
-      const viewportH = overlay.clientHeight;
-      const padding = 40;
-      const camera = editor.getCamera();
-
-      const topLimit = -(bounds.minY - padding);
-      const bottomLimit = -(bounds.maxY + padding) + viewportH;
-
-      let newY = camera.y - e.deltaY;
-
-      if (topLimit > bottomLimit) {
-        newY = Math.min(topLimit, Math.max(bottomLimit, newY));
+      // Clamp
+      if (topLimitRef.current > bottomLimitRef.current) {
+        newY = Math.min(topLimitRef.current, Math.max(bottomLimitRef.current, newY));
       } else {
-        newY = topLimit;
+        newY = topLimitRef.current;
       }
 
-      editor.setCamera({ x: fixedXRef.current, y: newY, z: 1 });
+      cameraYRef.current = newY;
     };
 
+    // Block ALL events on overlay except wheel
+    const block = (e: Event) => { e.preventDefault(); e.stopPropagation(); };
+
     overlay.addEventListener('wheel', handleWheel, { passive: false });
-    return () => overlay.removeEventListener('wheel', handleWheel);
+    overlay.addEventListener('touchstart', block, { passive: false });
+    overlay.addEventListener('touchmove', block, { passive: false });
+    overlay.addEventListener('touchend', block, { passive: false });
+    overlay.addEventListener('gesturestart', block, { passive: false });
+    overlay.addEventListener('gesturechange', block, { passive: false });
+    overlay.addEventListener('gestureend', block, { passive: false });
+    overlay.addEventListener('pointerdown', block, { passive: false });
+    overlay.addEventListener('pointermove', block, { passive: false });
+    overlay.addEventListener('pointerup', block, { passive: false });
+
+    return () => {
+      overlay.removeEventListener('wheel', handleWheel);
+      overlay.removeEventListener('touchstart', block);
+      overlay.removeEventListener('touchmove', block);
+      overlay.removeEventListener('touchend', block);
+      overlay.removeEventListener('gesturestart', block);
+      overlay.removeEventListener('gesturechange', block);
+      overlay.removeEventListener('gestureend', block);
+      overlay.removeEventListener('pointerdown', block);
+      overlay.removeEventListener('pointermove', block);
+      overlay.removeEventListener('pointerup', block);
+    };
   }, []);
 
   const handleMount = useCallback((editor: Editor) => {
@@ -83,8 +120,15 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
       }
     }
 
-    // Read-only
+    // Read-only, lock everything
     editor.updateInstanceState({ isReadonly: true });
+    editor.setCameraOptions({
+      isLocked: true,
+      wheelBehavior: 'none',
+      zoomSpeed: 0,
+      panSpeed: 0,
+      zoomSteps: [1],
+    });
 
     // Get bounding box of all content
     const allShapeIds = [...editor.getCurrentPageShapeIds()];
@@ -102,26 +146,21 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
     }
 
     const contentW = maxX - minX;
-    const contentH = maxY - minY;
     const padding = 40;
 
-    boundsRef.current = { minX, minY, maxX, maxY, contentW, contentH };
-
-    // Lock tldraw completely — our overlay handles everything
-    editor.setCameraOptions({
-      isLocked: true,
-      wheelBehavior: 'none',
-      zoomSpeed: 0,
-      panSpeed: 0,
-      zoomSteps: [1],
-    });
-
-    // Center horizontally, position at top
+    // Calculate fixed X (centered) and Y limits
     const viewportW = overlayRef.current?.clientWidth || window.innerWidth;
+    const viewportH = overlayRef.current?.clientHeight || window.innerHeight;
     const centerX = -(minX - padding) + (viewportW - contentW - padding * 2) / 2;
-    fixedXRef.current = centerX;
 
-    editor.setCamera({ x: centerX, y: -(minY - padding), z: 1 });
+    fixedXRef.current = centerX;
+    cameraYRef.current = -(minY - padding);
+    topLimitRef.current = -(minY - padding);
+    bottomLimitRef.current = -(maxY + padding) + viewportH;
+
+    // Set initial position
+    editor.setCamera({ x: centerX, y: cameraYRef.current, z: 1 });
+    readyRef.current = true;
   }, [data]);
 
   return (
@@ -133,7 +172,7 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
 
       {/* Canvas area */}
       <div className="flex-1 relative overflow-hidden">
-        {/* tldraw — renders shapes but receives NO user input */}
+        {/* tldraw — renders shapes, pointer-events disabled */}
         <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>
           <Tldraw
             onMount={handleMount}
@@ -142,7 +181,7 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
           />
         </div>
 
-        {/* Transparent overlay — captures scroll, blocks everything else */}
+        {/* Overlay — captures wheel, blocks everything else */}
         <div
           ref={overlayRef}
           className="absolute inset-0 z-10"
