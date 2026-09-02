@@ -299,6 +299,7 @@ export default function PublicMarkdownEditor({
                   <ReactMarkdown
                     remarkPlugins={[remarkGfm]}
                     rehypePlugins={[rehypeRaw]}
+                    urlTransform={(url) => url}
                     components={{
                       code({ className, children, ...props }) {
                         const isBlock = className?.startsWith('language-');

@@ -233,6 +233,7 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeRaw]}
+              urlTransform={(url) => url}
               components={{
                 code({ className, children, ...props }) {
                   const isBlock = className?.startsWith('language-');
