@@ -92,16 +92,27 @@ function getActiveLinesAtDepths(headings: TocItem[], idx: number, minLevel: numb
 }
 
 function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: string }) {
+  const navRef = useRef<HTMLElement>(null);
+
   const handleClick = useCallback((id: string) => {
     const el = document.getElementById(id);
     if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
+  // Auto-scroll sidebar to keep the active item visible
+  useEffect(() => {
+    if (!activeId || !navRef.current) return;
+    const activeBtn = navRef.current.querySelector(`[data-toc-id="${activeId}"]`) as HTMLElement | null;
+    if (activeBtn) {
+      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    }
+  }, [activeId]);
+
   if (headings.length === 0) return null;
   const minLevel = Math.min(...headings.map(h => h.level));
 
   return (
-    <nav>
+    <nav ref={navRef}>
       <div className="text-[9px] font-extrabold text-indigo-400 uppercase tracking-[0.15em] mb-4 px-1">
         On this page
       </div>
@@ -172,6 +183,7 @@ function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: str
               {/* Label */}
               <button
                 onClick={() => handleClick(item.id)}
+                data-toc-id={item.id}
                 className={`block w-full text-left transition-all duration-200 rounded-md py-[5px] ${
                   isActive
                     ? 'text-emerald-700 font-semibold bg-emerald-50/80'
