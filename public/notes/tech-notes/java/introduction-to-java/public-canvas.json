@@ -4,7 +4,7 @@
     "topicSlug": "java",
     "subtopicSlug": "introduction-to-java",
     "title": "Introduction to Java",
-    "exportedAt": "2026-09-02T08:36:00.856Z"
+    "exportedAt": "2026-09-02T08:42:13.184Z"
   },
   "content": "# Java Collections Framework\n\n## Overview\n\nThe **Collections Framework** provides a unified architecture for storing and manipulating groups of objects. It includes *interfaces*, *implementations*, and *algorithms*.\n\n> **Note:** All collection classes are in the `java.util` package. Import them before use.\n\n---\n\n## Core Interfaces\n\n| Interface | Ordered | Duplicates | Key-Value | Example Implementation |\n|-----------|---------|------------|-----------|----------------------|\n| `List` | ✅ Yes | ✅ Yes | ❌ No | ArrayList, LinkedList |\n| `Set` | ❌ No | ❌ No | ❌ No | HashSet, TreeSet |\n| `Queue` | ✅ Yes | ✅ Yes | ❌ No | PriorityQueue |\n| `Map` | ❌ No | Keys: No | ✅ Yes | HashMap, TreeMap |\n\n## ArrayList Example\n\n```java\nimport java.util.ArrayList;\nimport java.util.List;\n\npublic class Demo {\n    public static void main(String[] args) {\n        List<String> fruits = new ArrayList<>();\n        fruits.add(\"Apple\");\n        fruits.add(\"Banana\");\n        fruits.add(\"Cherry\");\n\n        // Stream API + Lambda\n        fruits.stream()\n              .filter(f -> f.startsWith(\"B\"))\n              .forEach(System.out::println);\n    }\n}\n"
 }
