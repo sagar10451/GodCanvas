@@ -1,0 +1,306 @@
+# System Design: E-Commerce Platform
+
+## Module 1: Architecture Overview
+
+### High-Level Design
+
+A modern e-commerce platform consists of multiple microservices communicating through message queues and API gateways. The key principle is **separation of concerns** — each service owns its data and business logic.
+
+> **Architecture Pattern:** We follow a *domain-driven microservices* architecture with event sourcing for critical business flows.
+
+### Technology Stack
+
+| Layer | Technology | Purpose |
+|-------|-----------|---------|
+| Frontend | React + Next.js | SSR, SEO, fast navigation |
+| API Gateway | Kong / AWS ALB | Rate limiting, auth, routing |
+| Services | Java Spring Boot | Core business logic |
+| Messaging | Apache Kafka | Event streaming |
+| Cache | Redis Cluster | Session, product cache |
+| Database | PostgreSQL + MongoDB | Relational + document store |
+| Search | Elasticsearch | Product search, autocomplete |
+| Storage | AWS S3 | Images, static assets |
+| CDN | CloudFront | Global content delivery |
+| Monitoring | Grafana + Prometheus | Metrics, alerting |
+
+### Request Flow
+
+1. User opens the app → **CDN** serves static assets
+2. Browser makes API call → hits **API Gateway**
+3. Gateway authenticates via **Auth Service**
+4. Request routed to appropriate **microservice**
+5. Service reads from **cache** (Redis) first
+6. Cache miss → queries **database**
+7. Response sent back through gateway
+8. Async events published to **Kafka** for analytics
+
+## Module 2: Core Services
+
+### User Service
+
+Handles registration, login, profile management.
+
+```java
+@RestController
+@RequestMapping("/api/users")
+public class UserController {
+    
+    @Autowired
+    private UserService userService;
+    
+    @PostMapping("/register")
+    public ResponseEntity<UserDTO> register(@Valid @RequestBody RegisterRequest req) {
+        User user = userService.createUser(req);
+        return ResponseEntity.status(HttpStatus.CREATED)
+                            .body(UserDTO.from(user));
+    }
+    
+    @GetMapping("/{id}")
+    public ResponseEntity<UserDTO> getUser(@PathVariable Long id) {
+        return userService.findById(id)
+                .map(u -> ResponseEntity.ok(UserDTO.from(u)))
+                .orElse(ResponseEntity.notFound().build());
+    }
+}
+```
+
+#### Authentication Flow
+
+- User submits credentials
+- Server validates against **bcrypt** hashed password
+- Issues **JWT** access token (15 min) + refresh token (7 days)
+- Tokens stored in `HttpOnly` cookies
+
+#### Database Schema
+
+```sql
+CREATE TABLE users (
+    id          BIGSERIAL PRIMARY KEY,
+    email       VARCHAR(255) UNIQUE NOT NULL,
+    password    VARCHAR(255) NOT NULL,
+    name        VARCHAR(100) NOT NULL,
+    role        VARCHAR(20) DEFAULT 'CUSTOMER',
+    created_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at  TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX idx_users_email ON users(email);
+```
+
+### Product Service
+
+Manages product catalog, inventory, pricing.
+
+#### Product Model
+
+```python
+# Using Python for the search indexing service
+class Product:
+    def __init__(self, id, name, price, category, tags):
+        self.id = id
+        self.name = name
+        self.price = price
+        self.category = category
+        self.tags = tags
+    
+    def to_elasticsearch_doc(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "price": self.price,
+            "category": self.category,
+            "tags": self.tags,
+            "suggest": {
+                "input": [self.name] + self.tags,
+                "weight": self.calculate_relevance()
+            }
+        }
+    
+    def calculate_relevance(self):
+        """Higher relevance for popular/discounted items"""
+        base = 10
+        if self.price < 100:
+            base += 5  # Budget-friendly boost
+        return base
+```
+
+#### Caching Strategy
+
+| Data | Cache TTL | Eviction | Pattern |
+|------|-----------|----------|---------|
+| Product details | 30 min | LRU | Cache-aside |
+| Product list | 5 min | TTL | Read-through |
+| Inventory count | 10 sec | TTL | Write-through |
+| User cart | Session | On logout | Write-behind |
+
+> ⚠️ **Important:** Never cache ~~payment~~ or **PII data** in Redis without encryption.
+
+### Order Service
+
+#### Order State Machine
+
+Orders follow a strict state machine:
+
+- `CREATED` → `PAYMENT_PENDING` → `PAID` → `PROCESSING` → `SHIPPED` → `DELIVERED`
+- Any state → `CANCELLED` (with refund trigger)
+- `DELIVERED` → `RETURN_REQUESTED` → `RETURNED`
+
+#### Event Publishing
+
+```java
+@Service
+public class OrderEventPublisher {
+    
+    @Autowired
+    private KafkaTemplate<String, OrderEvent> kafkaTemplate;
+    
+    public void publishOrderCreated(Order order) {
+        OrderEvent event = new OrderEvent(
+            EventType.ORDER_CREATED,
+            order.getId(),
+            order.getUserId(),
+            order.getTotalAmount(),
+            Instant.now()
+        );
+        kafkaTemplate.send("order-events", order.getId().toString(), event);
+    }
+}
+```
+
+### Payment Service
+
+#### Supported Methods
+
+1. **Credit/Debit Cards** — via Stripe
+2. **UPI** — via Razorpay
+3. **Wallets** — PayPal, Apple Pay, Google Pay
+4. **COD** — Cash on Delivery (with verification)
+
+#### Idempotency
+
+Every payment request must include an `idempotency_key`:
+
+```bash
+curl -X POST https://api.example.com/payments \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Idempotency-Key: ord_123_pay_attempt_1" \
+  -d '{
+    "order_id": "ord_123",
+    "amount": 2999,
+    "currency": "INR",
+    "method": "upi"
+  }'
+```
+
+## Module 3: Data Layer
+
+### Database Selection
+
+#### SQL vs NoSQL Decision Matrix
+
+| Criteria | PostgreSQL | MongoDB | Redis | Elasticsearch |
+|----------|-----------|---------|-------|--------------|
+| **Use case** | Transactions | Flexible docs | Cache/Session | Search |
+| **ACID** | ✅ Full | ⚠️ Partial | ❌ No | ❌ No |
+| **Scale** | Vertical | Horizontal | In-memory | Horizontal |
+| **Query** | SQL | JSON query | Key-Value | Lucene DSL |
+| **Best for** | Orders, Users | Products, Reviews | Cart, Sessions | Search, Analytics |
+
+### Sharding Strategy
+
+For tables exceeding **100M rows**, we shard by `user_id`:
+
+```sql
+-- Shard key: user_id % num_shards
+-- Shard 0: users 0, 4, 8, 12, ...
+-- Shard 1: users 1, 5, 9, 13, ...
+-- Shard 2: users 2, 6, 10, 14, ...
+-- Shard 3: users 3, 7, 11, 15, ...
+```
+
+### Replication
+
+- **Primary-Replica** setup with 1 primary + 2 read replicas
+- Writes go to primary only
+- Reads distributed across replicas
+- Replication lag: < 100ms
+
+## Module 4: Infrastructure
+
+### Deployment Pipeline
+
+```bash
+# CI/CD Pipeline (GitHub Actions)
+# 1. Code push → triggers workflow
+# 2. Run tests → unit + integration
+# 3. Build Docker image
+# 4. Push to ECR
+# 5. Deploy to EKS via Helm
+
+docker build -t ecommerce-api:${GIT_SHA} .
+docker push $ECR_REPO/ecommerce-api:${GIT_SHA}
+helm upgrade --install api ./charts/api --set image.tag=${GIT_SHA}
+```
+
+### Kubernetes Config
+
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: product-service
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: product-service
+  template:
+    spec:
+      containers:
+      - name: product-service
+        image: ecr/product-service:latest
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+```
+
+### Monitoring & Alerting
+
+#### Key Metrics
+
+- **P99 Latency** — must be < 200ms for API calls
+- **Error Rate** — alert if > 1% over 5 minutes
+- **CPU/Memory** — scale up at 70% utilization
+- **Kafka Consumer Lag** — alert if > 10,000 messages
+
+#### Alert Rules
+
+| Metric | Warning | Critical | Action |
+|--------|---------|----------|--------|
+| API latency P99 | > 200ms | > 500ms | Scale up, check DB |
+| Error rate | > 0.5% | > 2% | Page on-call |
+| Disk usage | > 70% | > 90% | Expand volume |
+| Pod restarts | > 3/hr | > 10/hr | Check logs, memory |
+
+---
+
+## Summary
+
+This architecture handles **10,000+ concurrent users** with:
+
+- ~~Monolithic architecture~~ **Microservices** for independent scaling
+- **Event-driven** communication via Kafka
+- **Multi-layer caching** for sub-100ms responses
+- **Auto-scaling** based on real-time metrics
+- **Zero-downtime deployments** via rolling updates
+
+*Built with love for scale.*

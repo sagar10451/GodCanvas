@@ -1,6 +1,6 @@
 /**
  * PublicMarkdownViewer — beautiful full-page markdown rendering for production.
- * 80% content on left, 20% sticky TOC sidebar on right.
+ * 80% content on left (fills fully), 20% sticky TOC sidebar with tree lines on right.
  * TOC auto-highlights current section as you scroll.
  */
 
@@ -22,7 +22,6 @@ interface TocItem {
   level: number;
 }
 
-/** Generate a slug from heading text */
 function slugify(text: string): string {
   return text
     .toLowerCase()
@@ -32,19 +31,13 @@ function slugify(text: string): string {
     .trim();
 }
 
-/** Parse markdown text to extract headings for TOC */
 function extractHeadings(markdown: string): TocItem[] {
   const headings: TocItem[] = [];
   const lines = markdown.split('\n');
   let inCodeBlock = false;
-
   for (const line of lines) {
-    if (line.trim().startsWith('```')) {
-      inCodeBlock = !inCodeBlock;
-      continue;
-    }
+    if (line.trim().startsWith('```')) { inCodeBlock = !inCodeBlock; continue; }
     if (inCodeBlock) continue;
-
     const match = line.match(/^(#{1,4})\s+(.+)$/);
     if (match) {
       const level = match[1].length;
@@ -55,7 +48,6 @@ function extractHeadings(markdown: string): TocItem[] {
   return headings;
 }
 
-/** Syntax-highlighted code block */
 function CodeBlock({ children, className }: { children: string; className?: string }) {
   const language = className?.replace('language-', '') || 'text';
   const code = String(children).replace(/\n$/, '');
@@ -65,12 +57,8 @@ function CodeBlock({ children, className }: { children: string; className?: stri
         <pre style={{ ...style, borderRadius: 10, padding: '16px 20px', fontSize: 13, lineHeight: 1.7, overflow: 'auto', margin: '1.2em 0' }}>
           {tokens.map((line, i) => (
             <div key={i} {...getLineProps({ line })}>
-              <span style={{ display: 'inline-block', width: 32, textAlign: 'right', paddingRight: 16, color: 'rgba(255,255,255,0.2)', userSelect: 'none', fontSize: 11 }}>
-                {i + 1}
-              </span>
-              {line.map((token, key) => (
-                <span key={key} {...getTokenProps({ token })} />
-              ))}
+              <span style={{ display: 'inline-block', width: 32, textAlign: 'right', paddingRight: 16, color: 'rgba(255,255,255,0.2)', userSelect: 'none', fontSize: 11 }}>{i + 1}</span>
+              {line.map((token, key) => <span key={key} {...getTokenProps({ token })} />)}
             </div>
           ))}
         </pre>
@@ -79,7 +67,6 @@ function CodeBlock({ children, className }: { children: string; className?: stri
   );
 }
 
-/** Custom heading renderer that adds id attributes for TOC linking */
 function HeadingRenderer({ level, children }: { level: number; children: React.ReactNode }) {
   const text = String(children).replace(/\*\*/g, '').replace(/\*/g, '').replace(/`/g, '');
   const id = slugify(text);
@@ -89,43 +76,97 @@ function HeadingRenderer({ level, children }: { level: number; children: React.R
   return <h4 id={id}>{children}</h4>;
 }
 
-/** TOC Sidebar */
+/** Check if a heading at index `idx` has children (next heading is deeper level) */
+function hasChildren(headings: TocItem[], idx: number): boolean {
+  if (idx >= headings.length - 1) return false;
+  return headings[idx + 1].level > headings[idx].level;
+}
+
+/** Check if a heading at index `idx` is the last child at its level within its parent group */
+function isLastChild(headings: TocItem[], idx: number): boolean {
+  const current = headings[idx];
+  for (let i = idx + 1; i < headings.length; i++) {
+    if (headings[i].level < current.level) return true; // hit parent — we were last
+    if (headings[i].level === current.level) return false; // sibling found
+  }
+  return true; // end of list
+}
+
+/** TOC Sidebar with tree lines */
 function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: string }) {
   const handleClick = useCallback((id: string) => {
     const el = document.getElementById(id);
-    if (el) {
-      el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }
+    if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }, []);
 
   if (headings.length === 0) return null;
 
-  // Find the minimum heading level to normalize indentation
   const minLevel = Math.min(...headings.map(h => h.level));
 
   return (
-    <nav className="space-y-0.5">
-      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3">
+    <nav>
+      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3 px-2">
         On this page
       </div>
-      {headings.map((item, i) => {
-        const indent = (item.level - minLevel) * 14;
-        const isActive = item.id === activeId;
-        return (
-          <button
-            key={`${item.id}-${i}`}
-            onClick={() => handleClick(item.id)}
-            className={`block w-full text-left transition-all duration-200 rounded-md px-2.5 py-1.5 text-[12px] leading-snug ${
-              isActive
-                ? 'text-emerald-600 font-semibold bg-emerald-50 border-l-2 border-emerald-500'
-                : 'text-gray-500 hover:text-gray-800 hover:bg-gray-50 border-l-2 border-transparent'
-            }`}
-            style={{ paddingLeft: `${indent + 10}px` }}
-          >
-            {item.text}
-          </button>
-        );
-      })}
+      <div className="relative">
+        {headings.map((item, i) => {
+          const depth = item.level - minLevel;
+          const isActive = item.id === activeId;
+          const hasKids = hasChildren(headings, i);
+          const isLast = isLastChild(headings, i);
+
+          return (
+            <div key={`${item.id}-${i}`} className="relative" style={{ paddingLeft: depth * 16 }}>
+              {/* Vertical line from parent */}
+              {depth > 0 && (
+                <div
+                  className="absolute border-l border-gray-300"
+                  style={{
+                    left: (depth - 1) * 16 + 8,
+                    top: 0,
+                    bottom: isLast && !hasKids ? '50%' : 0,
+                    width: 1,
+                  }}
+                />
+              )}
+              {/* Horizontal branch line */}
+              {depth > 0 && (
+                <div
+                  className="absolute border-t border-gray-300"
+                  style={{
+                    left: (depth - 1) * 16 + 8,
+                    top: '50%',
+                    width: 8,
+                  }}
+                />
+              )}
+              {/* Dot connector */}
+              {depth > 0 && (
+                <div
+                  className={`absolute rounded-full ${isActive ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                  style={{
+                    left: depth * 16 - 2,
+                    top: 'calc(50% - 2.5px)',
+                    width: 5,
+                    height: 5,
+                  }}
+                />
+              )}
+              <button
+                onClick={() => handleClick(item.id)}
+                className={`block w-full text-left transition-all duration-150 rounded-md py-1.5 text-[11.5px] leading-snug ${
+                  isActive
+                    ? 'text-emerald-700 font-semibold bg-emerald-50'
+                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100/60'
+                } ${depth === 0 ? 'font-medium text-[12px] text-gray-700' : ''}`}
+                style={{ paddingLeft: depth > 0 ? 12 : 8 }}
+              >
+                {item.text}
+              </button>
+            </div>
+          );
+        })}
+      </div>
     </nav>
   );
 }
@@ -133,41 +174,25 @@ function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: str
 export default function PublicMarkdownViewer({ data, title }: PublicMarkdownViewerProps) {
   const [activeId, setActiveId] = useState('');
   const contentRef = useRef<HTMLDivElement>(null);
-
   const headings = useMemo(() => extractHeadings(data.content || ''), [data.content]);
 
-  // IntersectionObserver to track which heading is in view
   useEffect(() => {
     if (headings.length === 0) return;
-
     const observer = new IntersectionObserver(
       (entries) => {
-        // Find the first heading that is intersecting (visible)
         for (const entry of entries) {
-          if (entry.isIntersecting) {
-            setActiveId(entry.target.id);
-            break;
-          }
+          if (entry.isIntersecting) { setActiveId(entry.target.id); break; }
         }
       },
-      {
-        rootMargin: '-80px 0px -60% 0px',
-        threshold: 0.1,
-      }
+      { rootMargin: '-80px 0px -60% 0px', threshold: 0.1 }
     );
-
-    // Observe all heading elements
     const timer = setTimeout(() => {
       for (const heading of headings) {
         const el = document.getElementById(heading.id);
         if (el) observer.observe(el);
       }
     }, 300);
-
-    return () => {
-      clearTimeout(timer);
-      observer.disconnect();
-    };
+    return () => { clearTimeout(timer); observer.disconnect(); };
   }, [headings]);
 
   if (!data.content) {
@@ -180,15 +205,12 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
 
   return (
     <div className="w-full min-h-[calc(100vh-78px)] bg-white flex">
-      {/* Main content — 80% */}
-      <div ref={contentRef} className="flex-1 overflow-y-auto" style={{ flex: '0 0 80%' }}>
-        <article className="max-w-[900px] mx-auto px-8 sm:px-12 py-10 sm:py-14">
-          {/* Title */}
+      {/* Main content — fills 80% fully */}
+      <div ref={contentRef} className="overflow-y-auto" style={{ flex: '0 0 80%' }}>
+        <article className="px-10 sm:px-14 lg:px-20 py-10 sm:py-14">
           <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight leading-tight mb-8 pb-6 border-b-2 border-gray-100">
             {title}
           </h1>
-
-          {/* Markdown content */}
           <div className="public-md-content">
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
@@ -196,9 +218,7 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
               components={{
                 code({ className, children, ...props }) {
                   const isBlock = className?.startsWith('language-');
-                  if (isBlock) {
-                    return <CodeBlock className={className}>{String(children)}</CodeBlock>;
-                  }
+                  if (isBlock) return <CodeBlock className={className}>{String(children)}</CodeBlock>;
                   return <code className="inline-code" {...props}>{children}</code>;
                 },
                 h1: ({ children }) => <HeadingRenderer level={1}>{children}</HeadingRenderer>,
@@ -213,9 +233,9 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
         </article>
       </div>
 
-      {/* TOC Sidebar — 20% */}
-      <aside className="hidden lg:block border-l border-gray-100 bg-gray-50/50" style={{ flex: '0 0 20%' }}>
-        <div className="sticky top-0 p-5 pt-10 max-h-screen overflow-y-auto">
+      {/* TOC Sidebar — 20% with tree lines */}
+      <aside className="hidden lg:block border-l border-gray-100 bg-gray-50/30" style={{ flex: '0 0 20%' }}>
+        <div className="sticky top-0 p-4 pt-10 max-h-screen overflow-y-auto">
           <TocSidebar headings={headings} activeId={activeId} />
         </div>
       </aside>
