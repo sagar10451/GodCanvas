@@ -516,23 +516,17 @@ a[href*="tldraw.dev"] {
 .step-anim-revealCenter { animation: step-revealCenter var(--step-duration, 800ms) ease-out both !important; }
 
 
-/* Public Canvas Viewer — kill all page scrolling and scrollbars */
-.public-canvas-active,
-.public-canvas-active body,
-.public-canvas-active body > div,
-.public-canvas-active * {
-  scrollbar-width: none !important;
-}
-.public-canvas-active::-webkit-scrollbar,
-.public-canvas-active *::-webkit-scrollbar {
-  display: none !important;
-  width: 0 !important;
-}
+/* Public Canvas Viewer — only prevent page-level scrolling */
 .public-canvas-active,
 .public-canvas-active body {
   overflow: hidden !important;
   height: 100vh !important;
   max-height: 100vh !important;
+}
+/* Hide scrollbar on the page itself but allow child containers to scroll */
+.public-canvas-active::-webkit-scrollbar,
+.public-canvas-active body::-webkit-scrollbar {
+  display: none !important;
 }
 
 
