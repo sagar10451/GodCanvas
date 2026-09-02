@@ -4,7 +4,7 @@
     "topicSlug": "java",
     "subtopicSlug": "introduction-to-java",
     "title": "Introduction to Java",
-    "exportedAt": "2026-09-02T06:54:41.932Z"
+    "exportedAt": "2026-09-02T06:57:57.418Z"
   },
   "snapshot": {
     "document": {
@@ -112,8 +112,8 @@
     }
   },
   "camera": {
-    "x": 0,
-    "y": 0,
+    "x": 95,
+    "y": -13,
     "z": 1
   },
   "diagramData": {
