@@ -106,19 +106,17 @@ function TocSidebar({ headings, activeId, sidebarRef }: { headings: TocItem[]; a
     if (!activeBtn) return;
 
     const container = sidebarRef.current;
-    const btnTop = activeBtn.offsetTop;
-    const btnHeight = activeBtn.offsetHeight;
-    const containerHeight = container.clientHeight;
-    const scrollTop = container.scrollTop;
+    const containerRect = container.getBoundingClientRect();
+    const btnRect = activeBtn.getBoundingClientRect();
     const padding = 40;
 
     // If button is below the visible area
-    if (btnTop + btnHeight > scrollTop + containerHeight - padding) {
-      container.scrollTo({ top: btnTop + btnHeight - containerHeight + padding, behavior: 'smooth' });
+    if (btnRect.bottom > containerRect.bottom - padding) {
+      container.scrollTop += btnRect.bottom - containerRect.bottom + padding;
     }
     // If button is above the visible area
-    else if (btnTop < scrollTop + padding) {
-      container.scrollTo({ top: Math.max(0, btnTop - padding), behavior: 'smooth' });
+    else if (btnRect.top < containerRect.top + padding) {
+      container.scrollTop -= containerRect.top + padding - btnRect.top;
     }
   }, [activeId, sidebarRef]);
 
