@@ -307,6 +307,14 @@ export default function PublicMarkdownEditor({
                         }
                         return <code className="inline-code" {...props}>{children}</code>;
                       },
+                      img: ({ src, alt }) => (
+                        <img
+                          src={src}
+                          alt={alt || 'image'}
+                          className="max-w-full rounded-lg shadow-md my-4"
+                          loading="lazy"
+                        />
+                      ),
                     }}
                   >
                     {content}

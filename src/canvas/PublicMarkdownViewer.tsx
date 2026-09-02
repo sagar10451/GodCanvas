@@ -202,7 +202,7 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
           if (entry.isIntersecting) { setActiveId(entry.target.id); break; }
         }
       },
-      { rootMargin: '-80px 0px -60% 0px', threshold: 0.1 }
+      { root: contentRef.current, rootMargin: '-80px 0px -60% 0px', threshold: 0.1 }
     );
     const timer = setTimeout(() => {
       for (const heading of headings) {
@@ -222,9 +222,9 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
   }
 
   return (
-    <div className="w-full min-h-[calc(100vh-78px)] bg-white flex">
-      {/* Main content */}
-      <div ref={contentRef} className="overflow-y-auto" style={{ flex: '0 0 80%' }}>
+    <div className="w-full h-[calc(100vh-78px)] bg-white flex overflow-hidden">
+      {/* Main content — own scroll container */}
+      <div ref={contentRef} className="overflow-y-auto h-full" style={{ flex: '0 0 80%' }}>
         <article className="px-10 sm:px-14 lg:px-20 py-10 sm:py-14">
           <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight leading-tight mb-8 pb-6 border-b-2 border-gray-100">
             {title}
@@ -243,6 +243,14 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
                 h2: ({ children }) => <HeadingRenderer level={2}>{children}</HeadingRenderer>,
                 h3: ({ children }) => <HeadingRenderer level={3}>{children}</HeadingRenderer>,
                 h4: ({ children }) => <HeadingRenderer level={4}>{children}</HeadingRenderer>,
+                img: ({ src, alt }) => (
+                  <img
+                    src={src}
+                    alt={alt || 'image'}
+                    className="max-w-full rounded-lg shadow-md my-4"
+                    loading="lazy"
+                  />
+                ),
               }}
             >
               {data.content}
