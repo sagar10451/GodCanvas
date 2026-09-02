@@ -1,7 +1,6 @@
 /**
- * PublicMarkdownViewer — beautiful full-page markdown rendering for production.
- * 80% content on left (fills fully), 20% sticky TOC sidebar with tree lines on right.
- * TOC auto-highlights current section as you scroll.
+ * PublicMarkdownViewer — premium full-page markdown rendering for production.
+ * 80% content, 20% sticky TOC sidebar with full tree lines.
  */
 
 import { useMemo, useEffect, useState, useCallback, useRef } from 'react';
@@ -23,12 +22,7 @@ interface TocItem {
 }
 
 function slugify(text: string): string {
-  return text
-    .toLowerCase()
-    .replace(/[^\w\s-]/g, '')
-    .replace(/\s+/g, '-')
-    .replace(/-+/g, '-')
-    .trim();
+  return text.toLowerCase().replace(/[^\w\s-]/g, '').replace(/\s+/g, '-').replace(/-+/g, '-').trim();
 }
 
 function extractHeadings(markdown: string): TocItem[] {
@@ -76,25 +70,27 @@ function HeadingRenderer({ level, children }: { level: number; children: React.R
   return <h4 id={id}>{children}</h4>;
 }
 
-/** For each heading, determine which ancestor depth levels still have siblings below */
-function getActiveLevels(headings: TocItem[], idx: number, minLevel: number): Set<number> {
+/**
+ * For each heading, check which depth levels still have a sibling BELOW.
+ * A sibling = another heading at the same level that appears before we go back to a shallower level.
+ * We need to draw vertical lines for every depth that has more siblings coming.
+ */
+function getActiveLinesAtDepths(headings: TocItem[], idx: number, minLevel: number): Set<number> {
   const active = new Set<number>();
-  const current = headings[idx];
-  // For each depth from 0 to current depth, check if there's a sibling at that level below
-  for (let d = 0; d <= current.level - minLevel; d++) {
+  const currentDepth = headings[idx].level - minLevel;
+
+  // For each depth from 0 to currentDepth, look ahead to see if there's another heading at that depth
+  for (let d = 0; d <= currentDepth; d++) {
     const targetLevel = minLevel + d;
     for (let j = idx + 1; j < headings.length; j++) {
-      if (headings[j].level < targetLevel) break; // went above this level — no more siblings
-      if (headings[j].level === targetLevel) {
-        active.add(d);
-        break;
-      }
+      const jLevel = headings[j].level;
+      if (jLevel < targetLevel) break; // went shallower than target — no sibling
+      if (jLevel === targetLevel) { active.add(d); break; } // found sibling
     }
   }
   return active;
 }
 
-/** TOC Sidebar with tree lines */
 function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: string }) {
   const handleClick = useCallback((id: string) => {
     const el = document.getElementById(id);
@@ -102,68 +98,86 @@ function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: str
   }, []);
 
   if (headings.length === 0) return null;
-
   const minLevel = Math.min(...headings.map(h => h.level));
 
   return (
     <nav>
-      <div className="text-[10px] font-bold text-gray-400 uppercase tracking-wider mb-3 px-2">
+      <div className="text-[9px] font-extrabold text-indigo-400 uppercase tracking-[0.15em] mb-4 px-1">
         On this page
       </div>
       <div className="relative">
         {headings.map((item, i) => {
           const depth = item.level - minLevel;
           const isActive = item.id === activeId;
-          const activeLevels = getActiveLevels(headings, i, minLevel);
+          const activeLines = getActiveLinesAtDepths(headings, i, minLevel);
+          const indentPx = 18;
 
           return (
-            <div key={`${item.id}-${i}`} className="relative" style={{ paddingLeft: depth * 16 }}>
-              {/* Continuous vertical lines for each ancestor level that has more siblings */}
-              {Array.from({ length: depth }, (_, d) => (
-                activeLevels.has(d) || d === depth - 1 ? (
+            <div key={`${item.id}-${i}`} className="relative" style={{ paddingLeft: depth * indentPx }}>
+              {/* Vertical lines for EVERY depth that has siblings below */}
+              {Array.from({ length: depth }, (_, d) => {
+                const shouldDraw = activeLines.has(d);
+                // Also draw the line for the immediate parent connecting to this item
+                const isParentLine = d === depth - 1;
+                if (!shouldDraw && !isParentLine) return null;
+
+                // For the last sibling at this depth, cut the line at 50%
+                const isLastAtThisDepth = isParentLine && !activeLines.has(depth - 1);
+
+                return (
                   <div
                     key={d}
-                    className="absolute border-l border-gray-200"
+                    className="absolute"
                     style={{
-                      left: d * 16 + 8,
+                      left: d * indentPx + 7,
                       top: 0,
-                      bottom: d === depth - 1 && !activeLevels.has(depth - 1) ? '50%' : 0,
+                      bottom: isLastAtThisDepth ? '50%' : 0,
                       width: 1,
+                      backgroundColor: '#cbd5e1',
                     }}
                   />
-                ) : null
-              ))}
-              {/* Horizontal branch line */}
+                );
+              })}
+
+              {/* Horizontal branch */}
               {depth > 0 && (
                 <div
-                  className="absolute border-t border-gray-200"
+                  className="absolute"
                   style={{
-                    left: (depth - 1) * 16 + 8,
+                    left: (depth - 1) * indentPx + 7,
                     top: '50%',
-                    width: 8,
+                    width: indentPx - 7,
+                    height: 1,
+                    backgroundColor: '#cbd5e1',
                   }}
                 />
               )}
-              {/* Dot connector */}
+
+              {/* Dot */}
               {depth > 0 && (
                 <div
-                  className={`absolute rounded-full ${isActive ? 'bg-emerald-500' : 'bg-gray-300'}`}
+                  className="absolute rounded-full"
                   style={{
-                    left: depth * 16 - 2,
-                    top: 'calc(50% - 2.5px)',
-                    width: 5,
-                    height: 5,
+                    left: depth * indentPx - 1,
+                    top: 'calc(50% - 3px)',
+                    width: 6,
+                    height: 6,
+                    backgroundColor: isActive ? '#059669' : '#94a3b8',
+                    boxShadow: isActive ? '0 0 6px rgba(5,150,105,0.4)' : 'none',
+                    transition: 'all 0.2s',
                   }}
                 />
               )}
+
+              {/* Label */}
               <button
                 onClick={() => handleClick(item.id)}
-                className={`block w-full text-left transition-all duration-150 rounded-md py-1.5 text-[11.5px] leading-snug ${
+                className={`block w-full text-left transition-all duration-200 rounded-md py-[5px] ${
                   isActive
-                    ? 'text-emerald-700 font-semibold bg-emerald-50'
-                    : 'text-gray-500 hover:text-gray-800 hover:bg-gray-100/60'
-                } ${depth === 0 ? 'font-medium text-[12px] text-gray-700' : ''}`}
-                style={{ paddingLeft: depth > 0 ? 12 : 8 }}
+                    ? 'text-emerald-700 font-semibold bg-emerald-50/80'
+                    : 'text-slate-500 hover:text-slate-800 hover:bg-slate-100/60'
+                } ${depth === 0 ? 'font-semibold text-[12.5px] text-slate-800' : 'text-[11px]'}`}
+                style={{ paddingLeft: depth > 0 ? 12 : 6 }}
               >
                 {item.text}
               </button>
@@ -209,7 +223,7 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
 
   return (
     <div className="w-full min-h-[calc(100vh-78px)] bg-white flex">
-      {/* Main content — fills 80% fully */}
+      {/* Main content */}
       <div ref={contentRef} className="overflow-y-auto" style={{ flex: '0 0 80%' }}>
         <article className="px-10 sm:px-14 lg:px-20 py-10 sm:py-14">
           <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight leading-tight mb-8 pb-6 border-b-2 border-gray-100">
@@ -237,9 +251,16 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
         </article>
       </div>
 
-      {/* TOC Sidebar — 20% with tree lines */}
-      <aside className="hidden lg:block border-l border-gray-100 bg-gray-50/30" style={{ flex: '0 0 20%' }}>
-        <div className="sticky top-0 p-4 pt-10 max-h-screen overflow-y-auto">
+      {/* TOC Sidebar */}
+      <aside
+        className="hidden lg:block"
+        style={{
+          flex: '0 0 20%',
+          borderLeft: '2px solid #e2e8f0',
+          background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
+        }}
+      >
+        <div className="sticky top-0 px-4 pt-8 pb-4 max-h-screen overflow-y-auto">
           <TocSidebar headings={headings} activeId={activeId} />
         </div>
       </aside>
