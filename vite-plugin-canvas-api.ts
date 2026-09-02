@@ -8,7 +8,7 @@
  */
 
 import type { Plugin } from 'vite';
-import { writeFileSync, mkdirSync, existsSync } from 'fs';
+import { writeFileSync, mkdirSync, existsSync, readFileSync } from 'fs';
 import { join } from 'path';
 import { execSync } from 'child_process';
 
@@ -103,9 +103,9 @@ export function canvasApiPlugin(): Plugin {
         });
       });
 
-      // Handle CORS preflight for both endpoints
+      // Handle CORS preflight for all endpoints
       server.middlewares.use((req, res, next) => {
-        if (req.method === 'OPTIONS' && (req.url?.startsWith('/__save-public-canvas') || req.url?.startsWith('/__publish'))) {
+        if (req.method === 'OPTIONS' && (req.url?.startsWith('/__save-public-canvas') || req.url?.startsWith('/__publish') || req.url?.startsWith('/__save-grid-config'))) {
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Access-Control-Allow-Methods', 'POST');
           res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -113,6 +113,49 @@ export function canvasApiPlugin(): Plugin {
           return;
         }
         next();
+      });
+
+      // POST /__save-grid-config — updates gridConfig.ts with new column value
+      server.middlewares.use('/__save-grid-config', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end('Method not allowed');
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        req.on('end', () => {
+          try {
+            const { path: pagePath, columns } = JSON.parse(body);
+            const configFile = join(process.cwd(), 'src', 'data', 'gridConfig.ts');
+            let content = readFileSync(configFile, 'utf-8');
+
+            // Check if path already exists in gridColumns
+            const pathEscaped = pagePath.replace(/'/g, "\\'");
+            const regex = new RegExp(`'${pathEscaped}':\\s*\\d+`);
+
+            if (regex.test(content)) {
+              // Update existing entry
+              content = content.replace(regex, `'${pathEscaped}': ${columns}`);
+            } else {
+              // Add new entry before the closing };
+              content = content.replace(
+                /(\n};)/,
+                `\n  '${pathEscaped}': ${columns},$1`
+              );
+            }
+
+            writeFileSync(configFile, content, 'utf-8');
+
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({ success: true }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
       });
     },
   };

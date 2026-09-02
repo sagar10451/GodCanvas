@@ -3,6 +3,9 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronRight, Search, ZoomIn } from 'lucide-react';
 import { usePortal } from '../data/portalContext';
+import { getGridColumns } from '../data/gridConfig';
+
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 import { findNodeByPath, isLeaf } from '../data/contentTree';
 import type { ContentNode } from '../data/contentTree';
 import TopicIcon from '../components/TopicIcon';
@@ -89,9 +92,13 @@ interface CardGridProps {
 
 function CardGrid({ nodes, searchQuery, onSearchChange, basePath, breadcrumbs, site, parentNode, isTopLevel }: CardGridProps) {
   const storageKey = `grid-cols-${basePath || 'root'}`;
+  const configPath = basePath || 'root';
   const [columns, setColumns] = useState(() => {
-    const saved = localStorage.getItem(storageKey);
-    return saved ? Number(saved) : 5;
+    if (isLocalhost) {
+      const saved = localStorage.getItem(storageKey);
+      return saved ? Number(saved) : getGridColumns(configPath);
+    }
+    return getGridColumns(configPath);
   });
   const { isPresenting } = usePresentation();
 
@@ -103,6 +110,12 @@ function CardGrid({ nodes, searchQuery, onSearchChange, basePath, breadcrumbs, s
   const handleColumnsChange = (val: number) => {
     setColumns(val);
     localStorage.setItem(storageKey, String(val));
+    // Save to gridConfig via Vite dev server
+    fetch('/__save-grid-config', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ path: configPath, columns: val }),
+    }).catch(() => { /* ignore on production */ });
   };
 
   const filtered = nodes.filter(() => {
@@ -223,8 +236,8 @@ function CardGrid({ nodes, searchQuery, onSearchChange, basePath, breadcrumbs, s
         </div>
       )}
 
-      {/* Zoom slider — top right, hidden in presentation */}
-      {!isPresenting && (
+      {/* Zoom slider — localhost only, hidden in presentation */}
+      {isLocalhost && !isPresenting && (
         <div className="flex items-center justify-end mb-4 gap-3">
           <ZoomIn className="w-4 h-4 text-gray-500" />
           <input
