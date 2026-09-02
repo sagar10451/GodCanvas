@@ -2,8 +2,9 @@
  * PublicCanvasViewer — renders a public canvas as a read-only vertical-scroll view.
  * Used on production (Vercel). Loads a static JSON file and renders with tldraw.
  * 
- * Custom scroll handling: intercepts wheel events, clamps camera to content bounds,
- * only allows vertical movement. Like a PDF reader.
+ * The tldraw canvas has pointer-events: none — it cannot receive any user input.
+ * A transparent overlay captures wheel events and programmatically moves the camera.
+ * This is bulletproof — no gesture, touch, or scroll can bypass it.
  */
 
 import { useCallback, useRef, useEffect } from 'react';
@@ -23,8 +24,9 @@ interface PublicCanvasViewerProps {
 
 export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerProps) {
   const editorRef = useRef<Editor | null>(null);
-  const contentBoundsRef = useRef<{ minX: number; minY: number; maxX: number; maxY: number; contentW: number; contentH: number } | null>(null);
-  const canvasContainerRef = useRef<HTMLDivElement>(null);
+  const boundsRef = useRef<{ minX: number; minY: number; maxX: number; maxY: number; contentW: number; contentH: number } | null>(null);
+  const fixedXRef = useRef<number>(0);
+  const overlayRef = useRef<HTMLDivElement>(null);
 
   // Kill all page scrolling
   useEffect(() => {
@@ -34,63 +36,39 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
     };
   }, []);
 
-  // Custom wheel handler — clamps camera Y within content bounds
+  // Custom scroll handler on the overlay div
   useEffect(() => {
-    const container = canvasContainerRef.current;
-    if (!container) return;
+    const overlay = overlayRef.current;
+    if (!overlay) return;
 
     const handleWheel = (e: WheelEvent) => {
       e.preventDefault();
       e.stopPropagation();
 
       const editor = editorRef.current;
-      const bounds = contentBoundsRef.current;
+      const bounds = boundsRef.current;
       if (!editor || !bounds) return;
 
-      const camera = editor.getCamera();
-      const viewportH = container.clientHeight;
+      const viewportH = overlay.clientHeight;
       const padding = 40;
+      const camera = editor.getCamera();
 
-      // Calculate Y bounds: 
-      // Camera Y is negative (camera moves up = content moves down)
-      // At top: camera.y = -(minY - padding) → shows top of content
-      // At bottom: camera.y = -(maxY + padding) + viewportH → shows bottom of content
       const topLimit = -(bounds.minY - padding);
       const bottomLimit = -(bounds.maxY + padding) + viewportH;
 
-      // New Y position — scroll delta applied
-      const scrollSpeed = 1;
-      let newY = camera.y - (e.deltaY * scrollSpeed);
+      let newY = camera.y - e.deltaY;
 
-      // Clamp: don't scroll above top or below bottom
       if (topLimit > bottomLimit) {
-        // Content is taller than viewport — normal clamping
         newY = Math.min(topLimit, Math.max(bottomLimit, newY));
       } else {
-        // Content fits in viewport — lock to top
         newY = topLimit;
       }
 
-      // Only update Y, keep X centered and zoom fixed
-      const viewportW = container.clientWidth;
-      const centerX = -(bounds.minX - padding) + (viewportW - bounds.contentW - padding * 2) / 2;
-      editor.setCamera({ x: centerX, y: newY, z: 1 });
+      editor.setCamera({ x: fixedXRef.current, y: newY, z: 1 });
     };
 
-    container.addEventListener('wheel', handleWheel, { passive: false });
-    
-    // Block touch/gesture panning (trackpad two-finger swipe)
-    const blockGesture = (e: Event) => e.preventDefault();
-    container.addEventListener('gesturestart', blockGesture, { passive: false });
-    container.addEventListener('gesturechange', blockGesture, { passive: false });
-    container.addEventListener('touchmove', blockGesture, { passive: false });
-    
-    return () => {
-      container.removeEventListener('wheel', handleWheel);
-      container.removeEventListener('gesturestart', blockGesture);
-      container.removeEventListener('gesturechange', blockGesture);
-      container.removeEventListener('touchmove', blockGesture);
-    };
+    overlay.addEventListener('wheel', handleWheel, { passive: false });
+    return () => overlay.removeEventListener('wheel', handleWheel);
   }, []);
 
   const handleMount = useCallback((editor: Editor) => {
@@ -127,10 +105,9 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
     const contentH = maxY - minY;
     const padding = 40;
 
-    // Save content bounds for the wheel handler
-    contentBoundsRef.current = { minX, minY, maxX, maxY, contentW, contentH };
+    boundsRef.current = { minX, minY, maxX, maxY, contentW, contentH };
 
-    // Disable tldraw's own wheel/zoom/pan — we handle it ourselves
+    // Lock tldraw completely — our overlay handles everything
     editor.setCameraOptions({
       isLocked: true,
       wheelBehavior: 'none',
@@ -139,9 +116,11 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
       zoomSteps: [1],
     });
 
-    // Center content horizontally, start at top
-    const viewportW = canvasContainerRef.current?.clientWidth || window.innerWidth;
+    // Center horizontally, position at top
+    const viewportW = overlayRef.current?.clientWidth || window.innerWidth;
     const centerX = -(minX - padding) + (viewportW - contentW - padding * 2) / 2;
+    fixedXRef.current = centerX;
+
     editor.setCamera({ x: centerX, y: -(minY - padding), z: 1 });
   }, [data]);
 
@@ -152,12 +131,22 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
         <h1 className="text-base font-bold text-gray-800">{title}</h1>
       </div>
 
-      {/* Canvas — fills remaining space */}
-      <div ref={canvasContainerRef} className="flex-1 relative overflow-hidden">
-        <Tldraw
-          onMount={handleMount}
-          hideUi={true}
-          shapeUtils={customShapeUtils}
+      {/* Canvas area */}
+      <div className="flex-1 relative overflow-hidden">
+        {/* tldraw — renders shapes but receives NO user input */}
+        <div className="absolute inset-0" style={{ pointerEvents: 'none' }}>
+          <Tldraw
+            onMount={handleMount}
+            hideUi={true}
+            shapeUtils={customShapeUtils}
+          />
+        </div>
+
+        {/* Transparent overlay — captures scroll, blocks everything else */}
+        <div
+          ref={overlayRef}
+          className="absolute inset-0 z-10"
+          style={{ pointerEvents: 'auto', cursor: 'default' }}
         />
       </div>
     </div>
