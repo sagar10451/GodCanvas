@@ -256,10 +256,10 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
 
   return (
     <div className="w-full h-[calc(100vh-78px)] bg-white flex overflow-hidden">
-      {/* Main content — own scroll container */}
-      <div ref={contentRef} className="overflow-y-auto h-full" style={{ flex: '0 0 80%' }}>
-        <article className="px-10 sm:px-14 lg:px-20 py-10 sm:py-14">
-          <h1 className="text-3xl sm:text-4xl font-extrabold text-gray-900 tracking-tight leading-tight mb-8 pb-6 border-b-2 border-gray-100">
+      {/* Main content — own scroll container; full-width on mobile, 80% when sidebar visible */}
+      <div ref={contentRef} className="overflow-y-auto h-full flex-1 lg:flex-none lg:basis-[80%]">
+        <article className="px-4 sm:px-10 md:px-14 lg:px-20 py-6 sm:py-10 md:py-14">
+          <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-gray-900 tracking-tight leading-tight mb-6 sm:mb-8 pb-4 sm:pb-6 border-b-2 border-gray-100">
             {title}
           </h1>
           <div className="public-md-content">
@@ -277,6 +277,11 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
                 h2: ({ children }) => <HeadingRenderer level={2}>{children}</HeadingRenderer>,
                 h3: ({ children }) => <HeadingRenderer level={3}>{children}</HeadingRenderer>,
                 h4: ({ children }) => <HeadingRenderer level={4}>{children}</HeadingRenderer>,
+                table: ({ children, ...props }) => (
+                  <div className="overflow-x-auto -mx-1 px-1">
+                    <table {...props}>{children}</table>
+                  </div>
+                ),
                 img: ({ src, alt, width, ...props }) => {
                   const align = (props as any)['data-align'] || 'left';
                   const justify = align === 'center' ? 'center' : align === 'right' ? 'flex-end' : 'flex-start';

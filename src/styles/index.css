@@ -648,3 +648,32 @@ a[href*="tldraw.dev"] {
   margin: 1em 0;
   box-shadow: 0 2px 12px rgba(0,0,0,0.08);
 }
+
+/* ─── Mobile responsive tweaks for markdown viewer ────────────────────────── */
+@media (max-width: 640px) {
+  .public-md-content {
+    font-size: 15px;
+    line-height: 1.7;
+  }
+  .public-md-content h1 { font-size: 1.6em; }
+  .public-md-content h2 { font-size: 1.3em; padding-bottom: 0.3em; }
+  .public-md-content h3 { font-size: 1.1em; }
+  .public-md-content h4 { font-size: 1em; }
+  .public-md-content pre {
+    font-size: 12px !important;
+    padding: 12px 14px !important;
+    border-radius: 8px !important;
+  }
+  .public-md-content blockquote {
+    padding: 0.6em 0.8em;
+    margin-left: 0;
+    margin-right: 0;
+  }
+  .public-md-content table {
+    font-size: 0.85em;
+  }
+  .public-md-content th,
+  .public-md-content td {
+    padding: 8px 10px;
+  }
+}
