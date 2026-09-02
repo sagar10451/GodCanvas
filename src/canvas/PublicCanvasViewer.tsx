@@ -76,22 +76,22 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
       zoomSpeed: 0,
       zoomSteps: [1],
       constraints: {
-        initialZoom: 'fit-x',
-        baseZoom: 'fit-x',
+        initialZoom: 'default',
+        baseZoom: 'default',
         bounds: {
           x: minX - padding,
           y: minY - padding,
           w: contentW + padding * 2,
           h: contentH + padding * 2,
         },
-        behavior: { x: 'fixed', y: 'contain' },
+        behavior: { x: 'fixed', y: 'inside' },
         padding: { x: 0, y: 0 },
         origin: { x: 0.5, y: 0 },
       },
     });
 
-    // Apply the constraints by resetting the camera
-    editor.setCamera(editor.getCamera(), { reset: true });
+    // Position camera at top of content at 100% zoom
+    editor.setCamera({ x: -(minX - padding), y: -(minY - padding), z: 1 });
   }, [data]);
 
   return (
