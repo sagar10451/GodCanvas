@@ -71,12 +71,26 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
         newY = topLimit;
       }
 
-      // Only update Y, keep X and zoom fixed
-      editor.setCamera({ x: camera.x, y: newY, z: camera.z });
+      // Only update Y, keep X centered and zoom fixed
+      const viewportW = container.clientWidth;
+      const centerX = -(bounds.minX - padding) + (viewportW - bounds.contentW - padding * 2) / 2;
+      editor.setCamera({ x: centerX, y: newY, z: 1 });
     };
 
     container.addEventListener('wheel', handleWheel, { passive: false });
-    return () => container.removeEventListener('wheel', handleWheel);
+    
+    // Block touch/gesture panning (trackpad two-finger swipe)
+    const blockGesture = (e: Event) => e.preventDefault();
+    container.addEventListener('gesturestart', blockGesture, { passive: false });
+    container.addEventListener('gesturechange', blockGesture, { passive: false });
+    container.addEventListener('touchmove', blockGesture, { passive: false });
+    
+    return () => {
+      container.removeEventListener('wheel', handleWheel);
+      container.removeEventListener('gesturestart', blockGesture);
+      container.removeEventListener('gesturechange', blockGesture);
+      container.removeEventListener('touchmove', blockGesture);
+    };
   }, []);
 
   const handleMount = useCallback((editor: Editor) => {
