@@ -126,8 +126,8 @@ export interface LessonCanvasData {
 }
 
 /**
- * Public canvas data — a simpler format for the read-only public view.
- * Contains just the tldraw snapshot (no animation steps, sub-topics, etc.)
+ * Public markdown data — stores markdown content for the public view.
+ * Rendered as a beautiful document page on production.
  */
 export interface PublicCanvasData {
   version: 2;
@@ -137,10 +137,6 @@ export interface PublicCanvasData {
     title: string;
     exportedAt: string;
   };
-  /** tldraw document snapshot */
-  snapshot: unknown;
-  /** Camera position to restore the same view */
-  camera?: { x: number; y: number; z: number };
-  /** React Flow diagram data */
-  diagramData?: DiagramData;
+  /** Raw markdown content */
+  content: string;
 }

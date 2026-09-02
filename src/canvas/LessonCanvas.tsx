@@ -20,7 +20,7 @@ import NodeCatalog from './diagram/NodeCatalog';
 import { EMPTY_DIAGRAM } from './diagram/diagramTypes';
 import type { DiagramData } from './diagram/diagramTypes';
 import './diagram/diagramStyles.css';
-import PublicCanvasEditor from './PublicCanvasEditor';
+import PublicMarkdownEditor from './PublicMarkdownEditor';
 import type { PublicCanvasData } from './types';
 
 /** Check if an ID belongs to a React Flow element (node or edge) vs a tldraw shape.
@@ -772,7 +772,7 @@ export default function LessonCanvas({
 
       {/* ─── Public Canvas OR Main Canvas ─────────────────────────── */}
       {showPublicCanvas ? (
-        <PublicCanvasEditor
+        <PublicMarkdownEditor
           topicSlug={topicSlug}
           subtopicSlug={subtopicSlug}
           subtopicTitle={subtopicTitle}

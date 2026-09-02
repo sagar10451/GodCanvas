@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { usePortal } from '../data/portalContext';
 import LessonCanvas from '../canvas/LessonCanvas';
-import PublicCanvasViewer from '../canvas/PublicCanvasViewer';
+import PublicMarkdownViewer from '../canvas/PublicMarkdownViewer';
 import type { LessonCanvasData, PublicCanvasData } from '../canvas/types';
 
 interface LessonPageProps {
@@ -31,7 +31,7 @@ export default function LessonPage({ topicSlug, subtopicSlug, topicTitle, subtop
       }
       setLoaded(true);
     } else {
-      // Production: fetch public-canvas.json
+      // Production: fetch public-canvas.json (contains markdown content)
       const jsonPath = `/notes/${site.id}/${topicSlug}/${subtopicSlug}/public-canvas.json`;
       fetch(jsonPath)
         .then(res => {
@@ -57,15 +57,14 @@ export default function LessonPage({ topicSlug, subtopicSlug, topicTitle, subtop
     );
   }
 
-  // Production: show public canvas viewer
+  // Production: show markdown viewer
   if (!isLocalhost) {
     if (publicData) {
-      return <PublicCanvasViewer data={publicData} title={subtopicTitle} />;
+      return <PublicMarkdownViewer data={publicData} title={subtopicTitle} />;
     }
-    // Fallback: no public canvas exported yet
     if (publicLoadFailed) {
       return (
-        <div className="w-full h-[calc(100vh-78px)] flex items-center justify-center">
+        <div className="w-full h-[calc(100vh-78px)] flex items-center justify-center bg-white">
           <div className="text-center">
             <p className="text-gray-500 text-lg font-medium">Notes coming soon</p>
             <p className="text-gray-400 text-sm mt-1">{topicTitle} / {subtopicTitle}</p>
