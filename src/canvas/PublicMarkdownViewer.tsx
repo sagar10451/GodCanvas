@@ -196,20 +196,33 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
 
   useEffect(() => {
     if (headings.length === 0) return;
+    const visibleIds = new Set<string>();
+
     const observer = new IntersectionObserver(
       (entries) => {
         for (const entry of entries) {
-          if (entry.isIntersecting) { setActiveId(entry.target.id); break; }
+          if (entry.isIntersecting) {
+            visibleIds.add(entry.target.id);
+          } else {
+            visibleIds.delete(entry.target.id);
+          }
+        }
+        // Pick the topmost visible heading (earliest in the headings array)
+        for (const heading of headings) {
+          if (visibleIds.has(heading.id)) {
+            setActiveId(heading.id);
+            return;
+          }
         }
       },
-      { root: contentRef.current, rootMargin: '-80px 0px -60% 0px', threshold: 0.1 }
+      { root: contentRef.current, rootMargin: '0px 0px -70% 0px', threshold: 0 }
     );
     const timer = setTimeout(() => {
       for (const heading of headings) {
         const el = document.getElementById(heading.id);
         if (el) observer.observe(el);
       }
-    }, 300);
+    }, 500);
     return () => { clearTimeout(timer); observer.disconnect(); };
   }, [headings]);
 
