@@ -8,7 +8,7 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { getSnapshot } from 'tldraw';
 import type { Editor } from 'tldraw';
-import { Save, Download, Palette, Boxes, Code2, FileText } from 'lucide-react';
+import { Save, Download, Palette, Boxes, Code2, FileText, Upload } from 'lucide-react';
 import CanvasEditor from './CanvasEditor';
 import type { PublicCanvasData } from './types';
 import type { DiagramData } from './diagram/diagramTypes';
@@ -177,20 +177,72 @@ export default function PublicCanvasEditor({
     setIsSaved(true);
   }, [editor, siteId, topicSlug, subtopicSlug, buildSaveData]);
 
-  // Export to static JSON file in public/notes/ folder
-  const handleExportPublic = useCallback(() => {
+  // Export — saves JSON directly to project folder via Vite dev server API
+  const [exportStatus, setExportStatus] = useState<string | null>(null);
+  const [publishStatus, setPublishStatus] = useState<string | null>(null);
+
+  // Toast notification
+  const [toast, setToast] = useState<{ message: string; type: 'success' | 'error' } | null>(null);
+  const showToast = useCallback((message: string, type: 'success' | 'error') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), 4000);
+  }, []);
+
+  const handleExportPublic = useCallback(async () => {
     if (!editor) return;
+    // Check if canvas has any content
+    if (editor.getCurrentPageShapeIds().size === 0) {
+      showToast('Canvas is empty — add content before exporting', 'error');
+      return;
+    }
     const data = buildSaveData();
-    const json = JSON.stringify(data, null, 2);
-    const blob = new Blob([json], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = window.document.createElement('a');
-    a.href = url;
-    a.download = `public-canvas.json`;
-    a.click();
-    URL.revokeObjectURL(url);
-    alert(`Downloaded public-canvas.json\n\nPlace it in:\npublic/notes/${siteId}/${topicSlug}/${subtopicSlug}/public-canvas.json\n\nThen commit and deploy.`);
-  }, [editor, siteId, topicSlug, subtopicSlug, buildSaveData]);
+    setExportStatus('Saving...');
+    try {
+      const res = await fetch('/__save-public-canvas', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ siteId, topicSlug, subtopicSlug, data }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setExportStatus(null);
+        showToast('Saved successfully', 'success');
+      } else {
+        setExportStatus(null);
+        showToast('Save failed: ' + result.error, 'error');
+      }
+    } catch {
+      setExportStatus(null);
+      showToast('Save failed — is dev server running?', 'error');
+    }
+  }, [editor, siteId, topicSlug, subtopicSlug, buildSaveData, showToast]);
+
+  // Publish — commits and pushes to GitHub
+  const handlePublish = useCallback(async () => {
+    setPublishStatus('Publishing...');
+    try {
+      const res = await fetch('/__publish', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ message: `Update public canvas: ${topicSlug}/${subtopicSlug}` }),
+      });
+      const result = await res.json();
+      if (result.success) {
+        setPublishStatus(null);
+        if (result.message === 'No changes to publish') {
+          showToast('No changes to publish — export first', 'error');
+        } else {
+          showToast('Pushed to GitHub — Vercel will auto-deploy', 'success');
+        }
+      } else {
+        setPublishStatus(null);
+        showToast('Push failed: ' + result.error, 'error');
+      }
+    } catch {
+      setPublishStatus(null);
+      showToast('Push failed — check your SSH key and network', 'error');
+    }
+  }, [topicSlug, subtopicSlug, showToast]);
 
   return (
     <div className="w-full h-full flex flex-col">
@@ -205,9 +257,13 @@ export default function PublicCanvasEditor({
           <button onClick={handleSave} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${isSaved ? 'bg-emerald-800 text-emerald-400' : 'bg-blue-500 text-white hover:bg-blue-600'}`}>
             <Save className="w-3.5 h-3.5" />{isSaved ? 'Saved' : 'Save'}
           </button>
-          <button onClick={handleExportPublic} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-800 text-emerald-100 hover:bg-emerald-700 transition-all" title="Export for deployment">
+          <button onClick={handleExportPublic} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-800 text-emerald-100 hover:bg-emerald-700 transition-all" title="Save to project folder">
             <Download className="w-3.5 h-3.5" />
-            Export
+            {exportStatus || 'Export'}
+          </button>
+          <button onClick={handlePublish} className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-700 text-blue-100 hover:bg-blue-600 transition-all" title="Commit and push to GitHub">
+            <Upload className="w-3.5 h-3.5" />
+            {publishStatus || 'Publish'}
           </button>
           <button onClick={() => setShowLineConfig(!showLineConfig)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${showLineConfig ? 'bg-cyan-500 text-white' : 'bg-emerald-800 text-emerald-100 hover:bg-emerald-700'}`}>
             Lines
@@ -304,6 +360,17 @@ export default function PublicCanvasEditor({
           </DraggableWidget>
         )}
       </div>
+
+      {/* Toast notification */}
+      {toast && (
+        <div className={`fixed top-20 left-1/2 -translate-x-1/2 z-[99999] px-5 py-3 rounded-xl shadow-2xl text-sm font-medium backdrop-blur-md transition-all ${
+          toast.type === 'success'
+            ? 'bg-emerald-600/90 text-white border border-emerald-400/30'
+            : 'bg-red-600/90 text-white border border-red-400/30'
+        }`}>
+          {toast.type === 'success' ? '✓ ' : '✕ '}{toast.message}
+        </div>
+      )}
     </div>
   );
 }

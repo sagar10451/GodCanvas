@@ -1,7 +1,7 @@
 /**
- * PublicCanvasViewer — renders a public canvas as a read-only scrollable document.
+ * PublicCanvasViewer — renders a public canvas as a read-only vertical-scroll view.
  * Used on production (Vercel). Loads a static JSON file and renders with tldraw.
- * No editing tools, no animation steps — just the content with live CSS animations.
+ * X-axis locked, Y-axis scrollable via wheel — like a PDF reader.
  */
 
 import { useCallback, useRef, useEffect } from 'react';
@@ -22,6 +22,14 @@ interface PublicCanvasViewerProps {
 export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerProps) {
   const editorRef = useRef<Editor | null>(null);
 
+  useEffect(() => {
+    // Add class to html element to kill all scrollbars
+    document.documentElement.classList.add('public-canvas-active');
+    return () => {
+      document.documentElement.classList.remove('public-canvas-active');
+    };
+  }, []);
+
   const handleMount = useCallback((editor: Editor) => {
     editorRef.current = editor;
 
@@ -34,44 +42,72 @@ export default function PublicCanvasViewer({ data, title }: PublicCanvasViewerPr
       }
     }
 
-    // Restore camera position
-    if (data.camera) {
-      setTimeout(() => {
-        editor.setCamera(data.camera!);
-      }, 50);
+    // Read-only
+    editor.updateInstanceState({ isReadonly: true });
+
+    // Get bounding box of all content
+    const allShapeIds = [...editor.getCurrentPageShapeIds()];
+    if (allShapeIds.length === 0) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const id of allShapeIds) {
+      const bounds = editor.getShapePageBounds(id);
+      if (bounds) {
+        minX = Math.min(minX, bounds.x);
+        minY = Math.min(minY, bounds.y);
+        maxX = Math.max(maxX, bounds.x + bounds.w);
+        maxY = Math.max(maxY, bounds.y + bounds.h);
+      }
     }
 
-    // Lock the canvas — read-only
-    editor.updateInstanceState({ isReadonly: true });
+    const contentW = maxX - minX;
+    const contentH = maxY - minY;
+    const padding = 40;
+
+    // Set camera constraints:
+    // - X axis: fixed (no horizontal movement)
+    // - Y axis: free scroll (vertical panning)
+    // - Wheel: pan (scroll to move up/down)
+    // - Zoom: locked to fit content width
+    editor.setCameraOptions({
+      isLocked: false,
+      wheelBehavior: 'pan',
+      panSpeed: 1,
+      zoomSpeed: 0,
+      zoomSteps: [1],
+      constraints: {
+        initialZoom: 'fit-x',
+        baseZoom: 'fit-x',
+        bounds: {
+          x: minX - padding,
+          y: minY - padding,
+          w: contentW + padding * 2,
+          h: contentH + padding * 2,
+        },
+        behavior: { x: 'fixed', y: 'contain' },
+        padding: { x: 0, y: 0 },
+        origin: { x: 0.5, y: 0 },
+      },
+    });
+
+    // Apply the constraints by resetting the camera
+    editor.setCamera(editor.getCamera(), { reset: true });
   }, [data]);
 
-  // Prevent zoom on scroll — let the page scroll instead
-  useEffect(() => {
-    const handler = (e: WheelEvent) => {
-      // Don't prevent if scrolling inside a code/md block
-      const target = e.target as HTMLElement;
-      if (target.closest('.md-block-rendered') || target.closest('pre') || target.closest('textarea')) return;
-    };
-    window.addEventListener('wheel', handler, { passive: true });
-    return () => window.removeEventListener('wheel', handler);
-  }, []);
-
   return (
-    <div className="w-full min-h-screen bg-[#f0ede8]">
+    <div className="w-full h-[calc(100vh-78px)] bg-[#f0ede8] flex flex-col overflow-hidden">
       {/* Title bar */}
-      <div className="sticky top-0 z-10 bg-white/80 backdrop-blur-md border-b border-gray-200 px-6 py-3">
-        <h1 className="text-lg font-bold text-gray-800">{title}</h1>
+      <div className="bg-white/80 backdrop-blur-md border-b border-gray-200 px-6 py-2.5 flex-shrink-0">
+        <h1 className="text-base font-bold text-gray-800">{title}</h1>
       </div>
 
-      {/* Canvas container — fixed aspect, centered */}
-      <div className="max-w-[1200px] mx-auto px-4 py-6">
-        <div className="w-full bg-[#f0ede8] rounded-xl overflow-hidden shadow-lg border border-gray-200" style={{ height: 'calc(100vh - 120px)' }}>
-          <Tldraw
-            onMount={handleMount}
-            hideUi={true}
-            shapeUtils={customShapeUtils}
-          />
-        </div>
+      {/* Canvas — fills remaining space, scroll vertically only */}
+      <div className="flex-1 relative overflow-hidden">
+        <Tldraw
+          onMount={handleMount}
+          hideUi={true}
+          shapeUtils={customShapeUtils}
+        />
       </div>
     </div>
   );
