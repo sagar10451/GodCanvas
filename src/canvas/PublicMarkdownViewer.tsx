@@ -91,7 +91,7 @@ function getActiveLinesAtDepths(headings: TocItem[], idx: number, minLevel: numb
   return active;
 }
 
-function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: string }) {
+function TocSidebar({ headings, activeId, sidebarRef }: { headings: TocItem[]; activeId: string; sidebarRef: React.RefObject<HTMLElement | null> }) {
   const navRef = useRef<HTMLElement>(null);
 
   const handleClick = useCallback((id: string) => {
@@ -101,12 +101,26 @@ function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: str
 
   // Auto-scroll sidebar to keep the active item visible
   useEffect(() => {
-    if (!activeId || !navRef.current) return;
-    const activeBtn = navRef.current.querySelector(`[data-toc-id="${activeId}"]`) as HTMLElement | null;
-    if (activeBtn) {
-      activeBtn.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+    if (!activeId || !sidebarRef.current) return;
+    const activeBtn = sidebarRef.current.querySelector(`[data-toc-id="${activeId}"]`) as HTMLElement | null;
+    if (!activeBtn) return;
+
+    const container = sidebarRef.current;
+    const btnTop = activeBtn.offsetTop;
+    const btnHeight = activeBtn.offsetHeight;
+    const containerHeight = container.clientHeight;
+    const scrollTop = container.scrollTop;
+    const padding = 40;
+
+    // If button is below the visible area
+    if (btnTop + btnHeight > scrollTop + containerHeight - padding) {
+      container.scrollTo({ top: btnTop + btnHeight - containerHeight + padding, behavior: 'smooth' });
     }
-  }, [activeId]);
+    // If button is above the visible area
+    else if (btnTop < scrollTop + padding) {
+      container.scrollTo({ top: Math.max(0, btnTop - padding), behavior: 'smooth' });
+    }
+  }, [activeId, sidebarRef]);
 
   if (headings.length === 0) return null;
   const minLevel = Math.min(...headings.map(h => h.level));
@@ -204,6 +218,7 @@ function TocSidebar({ headings, activeId }: { headings: TocItem[]; activeId: str
 export default function PublicMarkdownViewer({ data, title }: PublicMarkdownViewerProps) {
   const [activeId, setActiveId] = useState('');
   const contentRef = useRef<HTMLDivElement>(null);
+  const sidebarRef = useRef<HTMLElement>(null);
   const headings = useMemo(() => extractHeadings(data.content || ''), [data.content]);
 
   // Track active heading via scroll position
@@ -289,6 +304,7 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
 
       {/* TOC Sidebar */}
       <aside
+        ref={sidebarRef}
         className="hidden lg:block h-full overflow-y-auto"
         style={{
           flex: '0 0 20%',
@@ -298,7 +314,7 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
       >
         <div className="px-4 py-6">
           <div className="pb-2" />
-          <TocSidebar headings={headings} activeId={activeId} />
+          <TocSidebar headings={headings} activeId={activeId} sidebarRef={sidebarRef} />
           <div className="pt-6" />
         </div>
       </aside>
