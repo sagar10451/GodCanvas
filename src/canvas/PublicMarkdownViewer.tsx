@@ -194,36 +194,31 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
   const contentRef = useRef<HTMLDivElement>(null);
   const headings = useMemo(() => extractHeadings(data.content || ''), [data.content]);
 
+  // Track active heading via scroll position
   useEffect(() => {
     if (headings.length === 0) return;
-    const visibleIds = new Set<string>();
+    const container = contentRef.current;
+    if (!container) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        for (const entry of entries) {
-          if (entry.isIntersecting) {
-            visibleIds.add(entry.target.id);
-          } else {
-            visibleIds.delete(entry.target.id);
-          }
-        }
-        // Pick the topmost visible heading (earliest in the headings array)
-        for (const heading of headings) {
-          if (visibleIds.has(heading.id)) {
-            setActiveId(heading.id);
-            return;
-          }
-        }
-      },
-      { root: contentRef.current, rootMargin: '0px 0px -70% 0px', threshold: 0 }
-    );
-    const timer = setTimeout(() => {
+    const handleScroll = () => {
+      let current = '';
       for (const heading of headings) {
         const el = document.getElementById(heading.id);
-        if (el) observer.observe(el);
+        if (!el) continue;
+        const rect = el.getBoundingClientRect();
+        const containerRect = container.getBoundingClientRect();
+        // If heading is within the top 40% of the content area, it's active
+        if (rect.top - containerRect.top < containerRect.height * 0.4) {
+          current = heading.id;
+        }
       }
-    }, 500);
-    return () => { clearTimeout(timer); observer.disconnect(); };
+      if (current) setActiveId(current);
+    };
+
+    // Initial check
+    setTimeout(handleScroll, 500);
+    container.addEventListener('scroll', handleScroll, { passive: true });
+    return () => container.removeEventListener('scroll', handleScroll);
   }, [headings]);
 
   if (!data.content) {
@@ -282,14 +277,14 @@ export default function PublicMarkdownViewer({ data, title }: PublicMarkdownView
 
       {/* TOC Sidebar */}
       <aside
-        className="hidden lg:block"
+        className="hidden lg:block h-full overflow-y-auto"
         style={{
           flex: '0 0 20%',
           borderLeft: '2px solid #e2e8f0',
           background: 'linear-gradient(180deg, #f8fafc 0%, #f1f5f9 100%)',
         }}
       >
-        <div className="sticky top-0 px-4 pt-8 pb-4 max-h-screen overflow-y-auto">
+        <div className="px-4 pt-8 pb-4">
           <TocSidebar headings={headings} activeId={activeId} />
         </div>
       </aside>
