@@ -7,6 +7,7 @@
 import { memo, useCallback } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
 import { getIconComponent } from './iconRegistry';
+import { ContentNode } from './ContentNode';
 
 const DEFAULT_W = 130;
 const DEFAULT_H = 90;
@@ -95,4 +96,5 @@ export const ShapeNode = memo(CustomNodeBase);
 
 export const nodeTypes = {
   shape: ShapeNode,
+  content: ContentNode,
 };

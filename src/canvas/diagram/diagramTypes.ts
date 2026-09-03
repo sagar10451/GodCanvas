@@ -89,6 +89,10 @@ export const NODE_CATALOG: NodeCatalogItem[] = [
   { type: 'shape', category: 'General', label: 'Cache', icon: '\uD83D\uDCBE', bg: 'linear-gradient(135deg, #33291a, #403320)', border: '#f0b72f', sub: 'In-Memory' },
   { type: 'shape', category: 'General', label: 'Firewall', icon: '\uD83D\uDEE1\uFE0F', bg: 'linear-gradient(135deg, #2e1a1a, #3a2020)', border: '#f97583', sub: 'Security' },
   { type: 'shape', category: 'General', label: 'Client', icon: '\uD83D\uDCBB', bg: 'linear-gradient(135deg, #1a2332, #1e2d40)', border: '#58a6ff', sub: 'Browser/App' },
+
+  // ── Content Nodes (text, image, rich content — connectable with lines) ──
+  { type: 'content', category: 'Content', label: 'Text', icon: '\uD83D\uDCDD', bg: 'transparent', border: 'transparent', sub: 'Text block' },
+  { type: 'content', category: 'Content', label: 'Text + Image', icon: '\uD83D\uDDBC\uFE0F', bg: 'transparent', border: 'transparent', sub: 'Rich content' },
 ];
 
 // ─── Edge catalogs ───────────────────────────────────────────────────────────

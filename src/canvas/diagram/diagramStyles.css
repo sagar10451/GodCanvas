@@ -374,3 +374,23 @@
 .rf-anim-visible {
   opacity: 1 !important;
 }
+
+/* ─── Content Node ────────────────────────────────────────────────────────── */
+.rf-content-node {
+  position: relative;
+  transition: box-shadow 0.2s ease;
+}
+.rf-content-node:hover {
+  box-shadow: 0 6px 24px rgba(0, 0, 0, 0.3);
+}
+.rf-content-node.rf-selected {
+  box-shadow: 0 0 0 2px #58a6ff, 0 4px 20px rgba(88, 166, 255, 0.3);
+}
+.rf-content-node:hover .rf-resize-handle,
+.rf-content-node.rf-selected .rf-resize-handle {
+  opacity: 1;
+}
+.rf-content-node:hover .react-flow__handle {
+  opacity: 1;
+  pointer-events: all;
+}
