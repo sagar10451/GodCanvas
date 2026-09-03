@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { motion } from 'framer-motion';
 import { ChevronRight, Search, ZoomIn } from 'lucide-react';
 import { usePortal } from '../data/portalContext';
-import { getGridColumns } from '../data/gridConfig';
+import { getGridColumns, getCountLabel } from '../data/gridConfig';
 
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 import { findNodeByPath, isLeaf } from '../data/contentTree';
@@ -104,7 +104,11 @@ function CardGrid({ nodes, searchQuery, onSearchChange, basePath, breadcrumbs, s
 
   const labelKey = `count-label-${basePath}`;
   const [countLabel, setCountLabel] = useState(() => {
-    return localStorage.getItem(labelKey) || 'Topics';
+    if (isLocalhost) {
+      const saved = localStorage.getItem(labelKey);
+      return saved || getCountLabel(configPath);
+    }
+    return getCountLabel(configPath);
   });
 
   const handleColumnsChange = (val: number) => {
@@ -201,19 +205,23 @@ function CardGrid({ nodes, searchQuery, onSearchChange, basePath, breadcrumbs, s
               <div className="flex items-center gap-3">
                 <h1 className="text-2xl font-bold text-white">{parentNode.title}</h1>
                 <span
-                  className="text-xs font-semibold px-2.5 py-1 rounded-full cursor-pointer hover:opacity-80 transition-opacity select-none"
-                  style={{ backgroundColor: `${parentNode.color}30`, color: parentNode.color }}
-                  onClick={(e) => {
+                  className="text-xs font-semibold px-2.5 py-1 rounded-full select-none"
+                  style={{ backgroundColor: `${parentNode.color}30`, color: parentNode.color, cursor: isLocalhost ? 'pointer' : 'default' }}
+                  onClick={isLocalhost ? (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    const labelKey = `count-label-${basePath}`;
-                    const current = localStorage.getItem(labelKey) || 'Topics';
+                    const current = countLabel;
                     const idx = LABEL_OPTIONS.indexOf(current as typeof LABEL_OPTIONS[number]);
                     const next = LABEL_OPTIONS[(idx + 1) % LABEL_OPTIONS.length];
                     localStorage.setItem(labelKey, next);
-                    // Force re-render by updating a dummy state
                     setCountLabel(next);
-                  }}
+                    // Save to config file via Vite dev server
+                    fetch('/__save-label-config', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ path: configPath, label: next }),
+                    }).catch(() => { /* ignore */ });
+                  } : undefined}
                 >
                   {nodes.length} {countLabel}
                 </span>

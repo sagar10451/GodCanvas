@@ -105,7 +105,7 @@ export function canvasApiPlugin(): Plugin {
 
       // Handle CORS preflight for all endpoints
       server.middlewares.use((req, res, next) => {
-        if (req.method === 'OPTIONS' && (req.url?.startsWith('/__save-public-canvas') || req.url?.startsWith('/__publish') || req.url?.startsWith('/__save-grid-config'))) {
+        if (req.method === 'OPTIONS' && (req.url?.startsWith('/__save-public-canvas') || req.url?.startsWith('/__publish') || req.url?.startsWith('/__save-grid-config') || req.url?.startsWith('/__save-label-config'))) {
           res.setHeader('Access-Control-Allow-Origin', '*');
           res.setHeader('Access-Control-Allow-Methods', 'POST');
           res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
@@ -144,6 +144,51 @@ export function canvasApiPlugin(): Plugin {
                 /(\n};)/,
                 `\n  '${pathEscaped}': ${columns},$1`
               );
+            }
+
+            writeFileSync(configFile, content, 'utf-8');
+
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('Access-Control-Allow-Origin', '*');
+            res.end(JSON.stringify({ success: true }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.end(JSON.stringify({ success: false, error: err.message }));
+          }
+        });
+      });
+
+      // POST /__save-label-config — updates gridConfig.ts with new count label value
+      server.middlewares.use('/__save-label-config', (req, res) => {
+        if (req.method !== 'POST') {
+          res.statusCode = 405;
+          res.end('Method not allowed');
+          return;
+        }
+
+        let body = '';
+        req.on('data', (chunk: Buffer) => { body += chunk.toString(); });
+        req.on('end', () => {
+          try {
+            const { path: pagePath, label } = JSON.parse(body);
+            const configFile = join(process.cwd(), 'src', 'data', 'gridConfig.ts');
+            let content = readFileSync(configFile, 'utf-8');
+
+            // Check if path already exists in countLabels
+            const pathEscaped = pagePath.replace(/'/g, "\\'");
+            const labelEscaped = label.replace(/'/g, "\\'");
+            const regex = new RegExp(`'${pathEscaped}':\\s*'[^']*'`);
+
+            if (regex.test(content)) {
+              // Update existing entry
+              content = content.replace(regex, `'${pathEscaped}': '${labelEscaped}'`);
+            } else {
+              // Add new entry before the closing }; of countLabels
+              // Find the countLabels block's closing };
+              const countLabelsEnd = content.lastIndexOf('};');
+              if (countLabelsEnd !== -1) {
+                content = content.slice(0, countLabelsEnd) + `  '${pathEscaped}': '${labelEscaped}',\n` + content.slice(countLabelsEnd);
+              }
             }
 
             writeFileSync(configFile, content, 'utf-8');
