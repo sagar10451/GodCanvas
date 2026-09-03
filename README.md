@@ -32,10 +32,19 @@ Interactive canvas-based notes platform with step-by-step animations, system des
 - **Camera auto-pans** to keep newly revealed elements visible
 
 ### Public Canvas
-- **Separate canvas** for production-ready content
-- **Full editor** with all features (same as main canvas)
-- **Export to JSON** — download `public-canvas.json` for deployment
-- **Production viewer** — read-only tldraw instance loaded from static JSON on Vercel
+- **Markdown editor** with split/edit/preview modes for production-ready content
+- **Image paste** — Cmd+V pastes screenshots as WebP-compressed inline images, resizable with left/center/right alignment
+- **Export & Publish** — single button that saves JSON and pushes to GitHub via deploy key
+- **Production viewer** — beautiful markdown rendering with syntax-highlighted code blocks, styled tables, blockquotes
+- **TOC sidebar** — auto-generated from headings with tree lines, active heading tracking, auto-scroll to current section
+- **Mobile responsive** — content goes full-width on mobile, sidebar hides, tables scroll horizontally
+
+### Card Grid & Navigation
+- **Live search** — real-time filtering by title + description, case-insensitive, with smooth layout animations (cards glide into position using spring physics)
+- **Grid zoom slider** — adjust 2–5 cards per row (localhost only, saved to config file, production reads from config)
+- **Count label** — click to cycle between Topics/Chapters/Modules/Subjects (localhost only, saved to config file)
+- **Coming Soon ribbon** — diagonal "In Progress" ribbon + frosted glass overlay on cards with `"status": "coming-soon"`
+- **Breadcrumb navigation** — auto-generated path trail for nested topics
 
 ### Two Portals
 - **`/`** — "Think Loud with Sagar Kumar" (IT/CS topics)
@@ -121,6 +130,26 @@ const ENABLE_COMPLETION_SOUND = false;  // Sub-topic ding sound
 const ENABLE_PARTY_POPPER = false;      // Final confetti celebration
 ```
 
+### Grid & Label Config (Localhost → Production)
+**File:** `src/data/gridConfig.ts`
+
+Controls how many cards per row and what label to show on each page. Set on localhost via slider/clicking — saved to this file — production reads from it.
+
+```ts
+// Cards per row (2-5) — set via zoom slider on localhost
+export const gridColumns: Record<string, number> = {
+  'root': 5,
+  '/java': 5,
+};
+
+// Count label — set by clicking the badge on localhost
+export const countLabels: Record<string, string> = {
+  'root': 'Topics',
+};
+```
+
+The zoom slider and label clicking are **hidden on production**. Production renders using values from this file.
+
 ### Canvas Background Color
 **File:** `src/styles/index.css`
 
@@ -158,22 +187,24 @@ Common icons: `BookOpen`, `Coffee`, `Code2`, `GitBranch`, `Brain`, `Cpu`, `Globe
 5. Auto-saves to localStorage every 1.5 seconds
 
 ### On Production (Vercel)
-1. Fetches `public-canvas.json` from `public/notes/{siteId}/{topic}/{subtopic}/`
-2. Renders read-only tldraw with all content visible
-3. Falls back to "Notes coming soon" if no JSON exists
-4. YouTube buttons visible (hidden on localhost)
+1. Card pages show topic/subtopic grids with search, breadcrumbs, and smooth animations
+2. Leaf topics fetch `public-canvas.json` from `public/notes/{siteId}/{topic}/{subtopic}/`
+3. Renders markdown content with syntax-highlighted code, styled tables, TOC sidebar
+4. Falls back to "Notes coming soon" if no JSON exists
+5. YouTube buttons visible (hidden on localhost)
+6. Grid slider, label switching, and canvas editor are all hidden — production is read-only
 
 ### Export / Import
 - **Export** (↓ button) — downloads full lesson as JSON (shapes, images, steps, sub-topics, diagram data)
 - **Import** (↑ button) — restores canvas from previously exported JSON
 - Images are stored as base64 inside the JSON
 
-### Public Canvas Deployment
-1. Click **Public** button → switch to public canvas editor
-2. Create/arrange content
-3. Click **Export** → downloads `public-canvas.json`
-4. Place file at: `public/notes/{siteId}/{topic}/{subtopic}/public-canvas.json`
-5. Commit and deploy to Vercel
+### Public Markdown Deployment
+1. Click **Public** button on a leaf topic → opens markdown editor
+2. Write/paste content in split or edit mode, preview renders live
+3. Paste images with Cmd+V — auto-compressed to WebP
+4. Click **Export & Publish** → saves JSON and pushes to GitHub in one step
+5. Vercel auto-deploys from GitHub
 
 ---
 
@@ -191,6 +222,24 @@ Common icons: `BookOpen`, `Coffee`, `Code2`, `GitBranch`, `Brain`, `Cpu`, `Globe
 - **canvas-confetti** — celebration effects
 - **lucide-react** — UI icons
 - **react-router-dom v7** — routing
+
+---
+
+## Vite Dev Server Endpoints
+
+The Vite plugin (`vite-plugin-canvas-api.ts`) adds these localhost-only endpoints:
+
+| Endpoint | Purpose |
+|----------|---------|
+| `POST /__save-public-canvas` | Save markdown content JSON to `public/notes/` |
+| `POST /__publish` | Git commit + push to GitHub via deploy key |
+| `POST /__save-grid-config` | Save cards-per-row setting to `gridConfig.ts` |
+| `POST /__save-label-config` | Save count label (Topics/Chapters/etc) to `gridConfig.ts` |
+
+These endpoints only exist on the dev server. Production builds ignore them entirely.
+
+### GitHub Deploy Key
+SSH key at `~/.ssh/godcanvas_key` — used for pushing from the Vite plugin without affecting global git config.
 
 ---
 
@@ -241,8 +290,8 @@ src/
   canvas/
     LessonCanvas.tsx        — Main canvas with all features
     CanvasEditor.tsx         — tldraw wrapper with custom shapes
-    PublicCanvasEditor.tsx   — Public canvas editor
-    PublicCanvasViewer.tsx   — Read-only viewer for production
+    PublicMarkdownEditor.tsx — Markdown editor (split/edit/preview modes)
+    PublicMarkdownViewer.tsx — Production markdown viewer with TOC sidebar
     AnimationPanel.tsx       — Animation steps panel
     SubTopicTracker.tsx      — Sub-topic progress tracker
     DraggableWidget.tsx      — Reusable draggable wrapper
@@ -266,18 +315,21 @@ src/
   components/
     Header.tsx               — App header with branding
     LaserPointer.tsx         — Laser pointer overlay
-    PdfViewer.tsx            — PDF viewer (legacy)
+    TopicIcon.tsx            — Lucide icon mapper for topics
   data/
     siteConfig.ts            — Portal branding config
+    gridConfig.ts            — Grid columns + count labels (localhost → production)
     portalContext.tsx         — Portal state management
     presentationContext.tsx   — Presentation mode state
+    contentTree.ts           — Tree navigation helpers
     think_loud.json          — IT/CS content tree
     chapter_breakdown.json   — School content tree
   pages/
-    LessonPage.tsx           — Routes to canvas or public viewer
-    PortalPage.tsx           — Card grid navigation
+    LessonPage.tsx           — Routes to canvas or markdown viewer
+    PortalPage.tsx           — Card grid with search + animations
   styles/
-    index.css                — Global styles + animations
+    index.css                — Global styles + animations + markdown typography
 public/
-  notes/                     — Static content files (JSON, PDFs)
+  notes/                     — Static content files (JSON for markdown)
+vite-plugin-canvas-api.ts   — Dev server endpoints (save, publish, config)
 ```
