@@ -18,8 +18,6 @@ import DiagramToolbar from './diagram/DiagramToolbar';
 import DraggableWidget from './DraggableWidget';
 import NodeCatalog from './diagram/NodeCatalog';
 import { EMPTY_DIAGRAM } from './diagram/diagramTypes';
-import SpotlightOverlay from './SpotlightOverlay';
-import CanvasMinimap from './CanvasMinimap';
 import type { DiagramData } from './diagram/diagramTypes';
 import './diagram/diagramStyles.css';
 import PublicMarkdownEditor from './PublicMarkdownEditor';
@@ -29,6 +27,48 @@ import type { PublicCanvasData } from './types';
  *  Tldraw IDs contain ':' (e.g. 'shape:xxx'). RF IDs don't. */
 const isRfId = (id: string) => !id.includes(':');
 const isTldrawId = (id: string) => id.includes(':');
+
+/** Resizable wrapper for the Steps panel — drag the right edge to widen */
+function ResizableStepsPanel({ children }: { children: React.ReactNode }) {
+  const [width, setWidth] = useState(288);
+  const isResizing = useRef(false);
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing.current = true;
+    const startX = e.clientX;
+    const startWidth = width;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!isResizing.current) return;
+      const newWidth = Math.max(250, Math.min(500, startWidth + (ev.clientX - startX)));
+      setWidth(newWidth);
+    };
+    const onMouseUp = () => {
+      isResizing.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, [width]);
+
+  return (
+    <div
+      className="bg-[#0f1b3d]/95 backdrop-blur-xl rounded-xl border border-blue-400/25 shadow-2xl shadow-blue-500/5 overflow-hidden relative"
+      style={{ width }}
+    >
+      {children}
+      {/* Resize handle on right edge */}
+      <div
+        onMouseDown={handleMouseDown}
+        className="absolute top-0 right-0 w-2 h-full cursor-ew-resize hover:bg-blue-400/20 transition-colors z-10"
+        title="Drag to resize"
+      />
+    </div>
+  );
+}
 
 /**
  * DropZone — only appears during drag operations from the node catalog.
@@ -153,8 +193,6 @@ export default function LessonCanvas({
   const [canvasReady, setCanvasReady] = useState(false);
   const [hideLockButton, setHideLockButton] = useState(false);
   const [tldrawCamera, setTldrawCamera] = useState<{ x: number; y: number; z: number } | null>(null);
-  const [spotlightActive, setSpotlightActive] = useState(false);
-  const [showMinimap, setShowMinimap] = useState(true);
 
   // ─── Diagram (React Flow) state ──────────────────────────────────────────
   const [diagramData, setDiagramData] = useState<DiagramData>(
@@ -169,6 +207,10 @@ export default function LessonCanvas({
   const diagramWrapperRef = useRef<HTMLDivElement>(null);
   const moveOriginalPositionsRef = useRef<Record<string, MoveRecord[]>>({});
   const zoomSavedCamerasRef = useRef<Record<string, { x: number; y: number; z: number }>>({});
+  const presentationStartCameraRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const editingCameraRef = useRef<{ x: number; y: number; z: number } | null>(null);
+  const stepAudioRef = useRef<HTMLAudioElement | null>(null);
+  const stepAudioTimerRef = useRef<number | null>(null);
 
   const handleRfSelectionChange = useCallback((nodeIds: string[], edgeIds: string[]) => {
     setRfSelectedNodeIds(nodeIds);
@@ -227,15 +269,16 @@ export default function LessonCanvas({
     // Temporarily allow tldraw edits
     ed.updateInstanceState({ isReadonly: false });
 
-    // Hide all tldraw animated shapes
-    const allAnimatedIds = new Set(steps.flatMap(s => s.shapeIds).filter(isTldrawId));
+    // Hide all tldraw animated shapes (none steps excluded — they don't affect visibility)
+    const visibilitySteps = steps.filter(s => (s.action || 'enter') !== 'none');
+    const allAnimatedIds = new Set(visibilitySteps.flatMap(s => s.shapeIds).filter(isTldrawId));
     allAnimatedIds.forEach(shapeId => {
       const shape = ed.getShape(shapeId as any);
       if (shape) ed.updateShape({ id: shape.id, type: shape.type, opacity: 0 });
     });
 
-    // Hide all RF animated elements via class
-    const allRfIds = new Set(steps.flatMap(s => s.shapeIds).filter(isRfId));
+    // Hide all RF animated elements via class (none steps excluded)
+    const allRfIds = new Set(visibilitySteps.flatMap(s => s.shapeIds).filter(isRfId));
     allRfIds.forEach(rfId => {
       const el = document.querySelector(`[data-id="${rfId}"]`) as HTMLElement | null;
       if (el) { el.classList.add('rf-anim-hidden'); el.classList.remove('rf-anim-visible'); }
@@ -256,6 +299,9 @@ export default function LessonCanvas({
     // Show/hide up to the given step based on action type
     for (let i = 0; i <= upToStep && i < steps.length; i++) {
       const stepAction = steps[i].action || 'enter';
+
+      // None steps don't affect visibility — skip
+      if (stepAction === 'none') continue;
 
       if (stepAction === 'exit') {
         // Exit step: shapes should be HIDDEN at this step
@@ -393,17 +439,109 @@ export default function LessonCanvas({
     };
   }, [editor, snapshot, topicSlug, subtopicSlug, subtopicTitle, animationSteps, subTopicLabels, shapeAnimations, diagramData, initialData]);
 
-  // Auto-save
+  const [storageWarning, setStorageWarning] = useState(false);
+
+  // Auto-save (strips audio data to keep localStorage small)
   useEffect(() => {
     if (!editor) return;
     const saveTimeout = setTimeout(() => {
       const data = buildSaveData();
+      // Strip audio base64 data before saving — keep only config
+      if (data.animationSteps) {
+        data.animationSteps = data.animationSteps.map((s: any) => {
+          if (s.audio?.data) {
+            return { ...s, audio: { ...s.audio, data: '' } };
+          }
+          return s;
+        });
+      }
       const key = `lesson-canvas-${siteId}-${topicSlug}-${subtopicSlug}`;
-      localStorage.setItem(key, JSON.stringify(data));
-      setIsSaved(true);
+      try {
+        const json = JSON.stringify(data);
+        localStorage.setItem(key, json);
+        setIsSaved(true);
+        setStorageWarning(false);
+      } catch {
+        // localStorage quota exceeded
+        setStorageWarning(true);
+        setIsSaved(false);
+      }
     }, 1500);
     return () => clearTimeout(saveTimeout);
   }, [snapshot, animationSteps, subTopicLabels, shapeAnimations, diagramData, editor, siteId, topicSlug, subtopicSlug, buildSaveData]);
+
+  // ─── Step audio helpers (Web Audio API for reliable volume control) ──────
+  const audioContextRef = useRef<AudioContext | null>(null);
+  const audioGainRef = useRef<GainNode | null>(null);
+  const audioSourceRef = useRef<MediaElementAudioSourceNode | null>(null);
+
+  const stopStepAudio = useCallback(() => {
+    if (stepAudioTimerRef.current) {
+      cancelAnimationFrame(stepAudioTimerRef.current);
+      stepAudioTimerRef.current = null;
+    }
+    if (stepAudioRef.current) {
+      stepAudioRef.current.pause();
+      stepAudioRef.current.currentTime = 0;
+      stepAudioRef.current = null;
+    }
+    audioSourceRef.current = null;
+    audioGainRef.current = null;
+  }, []);
+
+  const playStepAudio = useCallback((step: { audio?: { data: string; startTime: number; endTime: number; loop: boolean; volume: number } }) => {
+    stopStepAudio();
+    if (!step.audio || !step.audio.data) return;
+    const { data, startTime, endTime, loop, volume } = step.audio;
+
+    // Create AudioContext on first use (must be after user gesture)
+    if (!audioContextRef.current) {
+      audioContextRef.current = new AudioContext();
+    }
+    const ctx = audioContextRef.current;
+
+    const audio = new Audio(data);
+    audio.currentTime = startTime;
+    stepAudioRef.current = audio;
+
+    // Connect: Audio Element → GainNode → Speakers
+    const source = ctx.createMediaElementSource(audio);
+    const gain = ctx.createGain();
+    gain.gain.value = Math.max(0, Math.min(1, volume));
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    audioSourceRef.current = source;
+    audioGainRef.current = gain;
+
+    audio.play().catch(() => { /* autoplay blocked */ });
+
+    const handleTimeUpdate = () => {
+      if (audio.currentTime >= endTime) {
+        if (loop) {
+          audio.currentTime = startTime;
+        } else {
+          audio.pause();
+          stepAudioRef.current = null;
+          audioSourceRef.current = null;
+          audioGainRef.current = null;
+        }
+      }
+    };
+
+    const handleEnded = () => {
+      if (loop) {
+        audio.currentTime = startTime;
+        audio.play().catch(() => {});
+      } else {
+        stepAudioRef.current = null;
+        audioSourceRef.current = null;
+        audioGainRef.current = null;
+      }
+    };
+
+    audio.addEventListener('timeupdate', handleTimeUpdate);
+    audio.addEventListener('ended', handleEnded);
+  }, [stopStepAudio]);
 
   // Lock / Unlock
   const toggleLock = useCallback(() => {
@@ -423,6 +561,12 @@ export default function LessonCanvas({
       }
       moveOriginalPositionsRef.current = {};
       zoomSavedCamerasRef.current = {};
+      // Stop any playing audio
+      stopStepAudio();
+      // Restore camera to original editing position when unlocking
+      if (editingCameraRef.current) {
+        editor.setCamera(editingCameraRef.current, { force: true });
+      }
       setIsLocked(false);
     } else {
       editor.updateInstanceState({ isReadonly: false });
@@ -432,6 +576,10 @@ export default function LessonCanvas({
       }
       moveOriginalPositionsRef.current = {};
       zoomSavedCamerasRef.current = {};
+      // Save exact editing camera — restored on unlock and used as presentation start
+      const cam = editor.getCamera();
+      editingCameraRef.current = { x: cam.x, y: cam.y, z: cam.z };
+      presentationStartCameraRef.current = { x: cam.x, y: cam.y, z: cam.z };
       setCurrentStep(0);
       applyAnimationState(editor, animationSteps, 0);
       // Re-apply after a frame to catch RF elements that might not be in DOM yet
@@ -443,7 +591,7 @@ export default function LessonCanvas({
       setShowAnimBar(false);
       setShowNodes(false);
     }
-  }, [isLocked, editor, animationSteps, applyAnimationState]);
+  }, [isLocked, editor, animationSteps, applyAnimationState, stopStepAudio]);
 
   // Camera nudge
   const ensureShapesVisible = useCallback((shapeIds: string[]) => {
@@ -481,37 +629,52 @@ export default function LessonCanvas({
     const screenBottomRight = editor.pageToScreen({ x: maxX, y: maxY });
 
     // Compare with actual viewport screen bounds
-    const padding = 50;
-    const padBottom = 80;
+    // Only nudge if the shape is actually off-screen (outside viewport), not just near the edge
     let dx = 0, dy = 0;
+    const nudgePadding = 20; // Small padding when nudging to position
 
-    if (screenTopLeft.x < viewportBounds.x + padding) {
-      dx = (viewportBounds.x + padding - screenTopLeft.x) / zoom;
-    } else if (screenBottomRight.x > viewportBounds.x + viewportBounds.w - padding) {
-      dx = (viewportBounds.x + viewportBounds.w - padding - screenBottomRight.x) / zoom;
+    if (screenBottomRight.x < viewportBounds.x || screenTopLeft.x > viewportBounds.x + viewportBounds.w) {
+      // Shape is completely off-screen horizontally — center it
+      const centerX = (screenTopLeft.x + screenBottomRight.x) / 2;
+      const viewCenterX = viewportBounds.x + viewportBounds.w / 2;
+      dx = (viewCenterX - centerX) / zoom;
+    } else if (screenTopLeft.x < viewportBounds.x) {
+      dx = (viewportBounds.x + nudgePadding - screenTopLeft.x) / zoom;
+    } else if (screenBottomRight.x > viewportBounds.x + viewportBounds.w) {
+      dx = (viewportBounds.x + viewportBounds.w - nudgePadding - screenBottomRight.x) / zoom;
     }
 
-    if (screenTopLeft.y < viewportBounds.y + padding) {
-      dy = (viewportBounds.y + padding - screenTopLeft.y) / zoom;
-    } else if (screenBottomRight.y > viewportBounds.y + viewportBounds.h - padBottom) {
-      dy = (viewportBounds.y + viewportBounds.h - padBottom - screenBottomRight.y) / zoom;
+    if (screenBottomRight.y < viewportBounds.y || screenTopLeft.y > viewportBounds.y + viewportBounds.h) {
+      // Shape is completely off-screen vertically — center it
+      const centerY = (screenTopLeft.y + screenBottomRight.y) / 2;
+      const viewCenterY = viewportBounds.y + viewportBounds.h / 2;
+      dy = (viewCenterY - centerY) / zoom;
+    } else if (screenTopLeft.y < viewportBounds.y) {
+      dy = (viewportBounds.y + nudgePadding - screenTopLeft.y) / zoom;
+    } else if (screenBottomRight.y > viewportBounds.y + viewportBounds.h) {
+      dy = (viewportBounds.y + viewportBounds.h - nudgePadding - screenBottomRight.y) / zoom;
     }
 
     if (dx !== 0 || dy !== 0) {
-      editor.setCamera({ x: camera.x + dx, y: camera.y + dy, z: zoom }, { animation: { duration: 300 } });
+      editor.setCamera({ x: camera.x + dx, y: camera.y + dy, z: zoom }, { force: true, animation: { duration: 300 } });
     }
   }, [editor]);
 
   const goNext = useCallback(() => {
     if (!editor || !isLocked) return;
     if (currentStep >= animationSteps.length - 1) return;
+    // Stop any in-progress camera animation to prevent overlap
+    editor.stopCameraAnimation();
     const nextStep = currentStep + 1;
     const step = animationSteps[nextStep];
     const action = step.action || 'enter';
 
     switch (action) {
-      case 'enter':
-      default: {
+      case 'none': {
+        // No animation, no show/hide — camera capture (if any) handled below
+        break;
+      }
+      case 'enter': {
         // Show shapes with animation
         applyAnimationState(editor, animationSteps, nextStep);
         applyStepAnimation(step.shapeIds, step.animation, step.duration);
@@ -556,22 +719,40 @@ export default function LessonCanvas({
         applyStepAnimation(step.shapeIds, step.animation, step.duration);
         break;
       }
-      case 'zoom': {
-        const savedCam = applyZoomToShapes(step.shapeIds, step.duration, editor);
-        if (savedCam) {
-          zoomSavedCamerasRef.current[step.id] = savedCam;
-        }
+      default: {
+        // Unknown action — treat as enter
+        applyAnimationState(editor, animationSteps, nextStep);
+        applyStepAnimation(step.shapeIds, step.animation, step.duration);
         break;
       }
     }
 
+    // Camera movement — if this step has a captured camera position, zoom to it
+    if (step.cameraPosition) {
+      const savedCam = applyZoomToShapes(step.shapeIds, step.duration, editor, step.cameraPosition);
+      if (savedCam) {
+        zoomSavedCamerasRef.current[step.id] = savedCam;
+      }
+    }
+
+    // Play step audio if attached
+    playStepAudio(step);
+
     setCurrentStep(nextStep);
-    setTimeout(() => ensureShapesVisible(step.shapeIds), 150);
-  }, [editor, isLocked, currentStep, animationSteps, shapeAnimations, ensureShapesVisible, applyAnimationState]);
+    // If this step has a captured camera, it handles its own camera movement — skip nudge
+    // Otherwise, nudge camera to keep newly revealed shapes visible
+    if (!step.cameraPosition) {
+      setTimeout(() => ensureShapesVisible(step.shapeIds), 150);
+    }
+  }, [editor, isLocked, currentStep, animationSteps, shapeAnimations, ensureShapesVisible, applyAnimationState, playStepAudio]);
 
   const goPrevious = useCallback(() => {
     if (!editor || !isLocked) return;
     if (currentStep < 0) return;
+    // Stop any in-progress camera animation to prevent overlap
+    editor.stopCameraAnimation();
+    // Stop any playing audio
+    stopStepAudio();
 
     const step = animationSteps[currentStep];
     const action = step.action || 'enter';
@@ -582,8 +763,8 @@ export default function LessonCanvas({
       delete moveOriginalPositionsRef.current[step.id];
     }
 
-    // Rewind zoom: restore saved camera
-    if (action === 'zoom' && zoomSavedCamerasRef.current[step.id]) {
+    // Rewind camera: restore saved camera if this step had a captured view
+    if (step.cameraPosition && zoomSavedCamerasRef.current[step.id]) {
       rewindZoom(zoomSavedCamerasRef.current[step.id], editor);
       delete zoomSavedCamerasRef.current[step.id];
     }
@@ -592,13 +773,17 @@ export default function LessonCanvas({
 
     if (currentStep === 0) {
       applyAnimationState(editor, animationSteps, -1);
+      // Restore exact presentation start camera to prevent drift from accumulated nudges
+      if (presentationStartCameraRef.current) {
+        editor.setCamera(presentationStartCameraRef.current, { force: true });
+      }
       setCurrentStep(-1);
     } else {
       const prevStep = currentStep - 1;
       applyAnimationState(editor, animationSteps, prevStep);
       setCurrentStep(prevStep);
     }
-  }, [editor, isLocked, currentStep, animationSteps, applyAnimationState]);
+  }, [editor, isLocked, currentStep, animationSteps, applyAnimationState, stopStepAudio]);
 
   // Keyboard
   useEffect(() => {
@@ -606,9 +791,21 @@ export default function LessonCanvas({
       if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); handleSave(); return; }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'l') { e.preventDefault(); setHideLockButton(h => !h); return; }
       // Zoom shortcuts (work when unlocked too)
-      if (e.shiftKey && e.key === '!') { e.preventDefault(); editor?.zoomToSelection({ animation: { duration: 300 } }); return; }
-      if (e.shiftKey && e.key === '@') { e.preventDefault(); editor?.zoomToFit({ animation: { duration: 300 } }); return; }
-      if (e.shiftKey && e.key === ')') { e.preventDefault(); editor?.resetZoom(undefined, { animation: { duration: 300 } }); return; }
+      if (e.shiftKey && e.key === '!') { e.preventDefault(); editor?.zoomToSelection({ force: true, animation: { duration: 300 } }); return; }
+      if (e.shiftKey && e.key === '@') {
+        e.preventDefault();
+        if (editor) {
+          // Toggle: if not at 100%, reset to 100%; otherwise zoom to fit all
+          const zoom = editor.getZoomLevel();
+          if (Math.abs(zoom - 1) > 0.05) {
+            editor.resetZoom(undefined, { force: true, animation: { duration: 300 } });
+          } else {
+            editor.zoomToFit({ force: true, animation: { duration: 300 } });
+          }
+        }
+        return;
+      }
+      if (e.shiftKey && e.key === ')') { e.preventDefault(); editor?.resetZoom(undefined, { force: true, animation: { duration: 300 } }); return; }
       if (isLocked) {
         if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); goPrevious(); }
@@ -618,12 +815,38 @@ export default function LessonCanvas({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isLocked, goNext, goPrevious]);
 
+  // Warn before refresh if audio files are loaded in memory
+  useEffect(() => {
+    const hasAudioLoaded = animationSteps.some(s => s.audio?.data);
+    if (!hasAudioLoaded) return;
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [animationSteps]);
+
   const handleSave = useCallback(() => {
     if (!editor) return;
     const data = buildSaveData();
+    // Strip audio data before saving
+    if (data.animationSteps) {
+      data.animationSteps = data.animationSteps.map((s: any) => {
+        if (s.audio?.data) {
+          return { ...s, audio: { ...s.audio, data: '' } };
+        }
+        return s;
+      });
+    }
     const key = `lesson-canvas-${siteId}-${topicSlug}-${subtopicSlug}`;
-    localStorage.setItem(key, JSON.stringify(data));
-    setIsSaved(true);
+    try {
+      localStorage.setItem(key, JSON.stringify(data));
+      setIsSaved(true);
+      setStorageWarning(false);
+    } catch {
+      setStorageWarning(true);
+      setIsSaved(false);
+    }
   }, [editor, siteId, topicSlug, subtopicSlug, buildSaveData]);
 
   const handleExport = useCallback(() => {
@@ -714,26 +937,6 @@ export default function LessonCanvas({
             </div>
           )}
 
-          {/* Spotlight + Minimap toggles (locked mode) */}
-          {isLocked && (
-            <div className="flex items-center gap-1">
-              <button
-                onClick={() => setSpotlightActive(s => !s)}
-                className={`px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all ${spotlightActive ? 'bg-amber-500 text-white' : 'bg-blue-900 text-blue-100 hover:bg-blue-800'}`}
-                title="Toggle spotlight on zoom steps"
-              >
-                💡
-              </button>
-              <button
-                onClick={() => setShowMinimap(m => !m)}
-                className={`px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all ${showMinimap ? 'bg-indigo-500 text-white' : 'bg-blue-900 text-blue-100 hover:bg-blue-800'}`}
-                title="Toggle minimap"
-              >
-                🗺️
-              </button>
-            </div>
-          )}
-
           {/* Lock/Unlock */}
           {!hideLockButton && !isPresenting && (
             <button onClick={toggleLock} className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium transition-all ${isLocked ? 'bg-blue-900 text-blue-100 hover:bg-blue-800 border border-blue-800' : 'bg-emerald-600 text-white hover:bg-emerald-600/30 border border-emerald-500/30'}`}>
@@ -806,13 +1009,23 @@ export default function LessonCanvas({
               </button>
             </>
           )}
-          {/* Public canvas toggle — always available */}
-          <button onClick={() => setShowPublicCanvas(!showPublicCanvas)} className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${showPublicCanvas ? 'bg-emerald-600 text-white' : 'bg-blue-900 text-blue-100 hover:bg-blue-800'}`}>
-            <Eye className="w-3 h-3" />
-            Public
-          </button>
+          {/* Public canvas toggle — hidden when presenting */}
+          {!isPresenting && (
+            <button onClick={() => setShowPublicCanvas(!showPublicCanvas)} className={`flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${showPublicCanvas ? 'bg-emerald-600 text-white' : 'bg-blue-900 text-blue-100 hover:bg-blue-800'}`}>
+              <Eye className="w-3 h-3" />
+              Public
+            </button>
+          )}
         </div>
       </div>
+
+      {/* ─── Storage Warning ──────────────────────────────────────── */}
+      {storageWarning && (
+        <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 flex-shrink-0">
+          <span className="text-amber-300 text-xs font-medium">⚠️ Canvas too large for auto-save. Export JSON (↓) to keep your work.</span>
+          <button onClick={() => setStorageWarning(false)} className="text-amber-400 text-xs hover:text-amber-200 ml-auto">✕</button>
+        </div>
+      )}
 
       {/* ─── Public Canvas OR Main Canvas ─────────────────────────── */}
       {showPublicCanvas ? (
@@ -967,7 +1180,7 @@ export default function LessonCanvas({
         {/* Animation Steps Panel */}
         {!isLocked && showAnimPanel && (
           <DraggableWidget defaultPosition={{ x: window.innerWidth - 320, y: 16 }} zIndex={50}>
-            <div className="bg-[#0f1b3d]/95 backdrop-blur-xl rounded-xl border border-blue-400/25 shadow-2xl shadow-blue-500/5 overflow-hidden w-72">
+            <ResizableStepsPanel>
               <div data-drag-handle className="flex items-center justify-between px-3 py-2.5 border-b border-blue-400/15 bg-blue-500/8 cursor-grab active:cursor-grabbing">
                 <span className="text-xs font-semibold text-blue-300">Animation Steps</span>
               </div>
@@ -997,7 +1210,7 @@ export default function LessonCanvas({
                   }}
                 />
               </div>
-            </div>
+            </ResizableStepsPanel>
           </DraggableWidget>
         )}
 
@@ -1014,20 +1227,6 @@ export default function LessonCanvas({
 
         {/* Laser pointer overlay — only in presentation mode with laser tool */}
         {isPresenting && isLocked && presentationTool === 'laser' && <LaserPointer />}
-
-        {/* Spotlight overlay — dims canvas except focused shapes during zoom steps */}
-        <SpotlightOverlay
-          editor={editor}
-          shapeIds={
-            spotlightActive && isLocked && currentStep >= 0 && animationSteps[currentStep]?.action === 'zoom'
-              ? animationSteps[currentStep].shapeIds
-              : []
-          }
-          active={spotlightActive && isLocked}
-        />
-
-        {/* Minimap — overview thumbnail in bottom-right corner */}
-        <CanvasMinimap editor={editor} visible={showMinimap && isLocked} />
       </div>
       </>
       )}

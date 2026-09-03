@@ -250,13 +250,15 @@ export function clearStepAnimations(shapeIds: string[]) {
 // ─── Zoom (camera) ───────────────────────────────────────────────────────────
 
 /**
- * Zoom: smoothly animate the camera to frame the given shapes with padding.
+ * Zoom: smoothly animate the camera to a captured position.
+ * If no captured position, falls back to framing the given shapes.
  * Returns the camera state before the zoom so it can be restored on rewind.
  */
 export function applyZoomToShapes(
   shapeIds: string[],
   duration: number,
   editor: any,
+  capturedCamera?: { x: number; y: number; z: number },
 ): { x: number; y: number; z: number } | null {
   if (!editor) return null;
 
@@ -264,7 +266,16 @@ export function applyZoomToShapes(
   const cam = editor.getCamera();
   const savedCamera = { x: cam.x, y: cam.y, z: cam.z };
 
-  // Get bounds of all shapes in this step
+  // If we have a captured camera position, use it directly
+  if (capturedCamera) {
+    editor.setCamera(capturedCamera, {
+      force: true,
+      animation: { duration: Math.max(duration, 300), easing: (t: number) => 1 - Math.pow(1 - t, 3) },
+    });
+    return savedCamera;
+  }
+
+  // Fallback: calculate bounds from shapes
   const tldrawIds = shapeIds.filter(id => id.includes(':'));
   if (tldrawIds.length === 0) return savedCamera;
 
@@ -288,6 +299,7 @@ export function applyZoomToShapes(
   editor.zoomToBounds(
     { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
     {
+      force: true,
       inset: 80,
       animation: { duration: Math.max(duration, 300), easing: (t: number) => 1 - Math.pow(1 - t, 3) },
     },
@@ -305,6 +317,8 @@ export function rewindZoom(
 ) {
   if (!editor || !savedCamera) return;
   editor.setCamera(savedCamera, {
+    force: true,
     animation: { duration: 300, easing: (t: number) => 1 - Math.pow(1 - t, 3) },
   });
 }
+

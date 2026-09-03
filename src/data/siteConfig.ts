@@ -23,10 +23,10 @@ export const sites: Record<string, SiteConfig> = {
   'tech-notes': {
     id: 'tech-notes',
     basePath: '',
-    brandName: 'Think',
-    brandAccent: 'Loud',
-    brandSubtitle: 'with Sagar Kumar',
-    watermark: 'Think Loud with Sagar Kumar',
+    brandName: 'Dev',
+    brandAccent: 'Stack',
+    brandSubtitle: 'by Sagar Kumar',
+    watermark: 'DevStack by Sagar Kumar',
     youtubeUrl: 'https://youtube.com',
   },
   'flowchart-notes': {

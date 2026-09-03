@@ -53,7 +53,7 @@ export interface ShapeAnimationConfig {
   idle: IdleAnimation;
 }
 
-export type StepAction = 'enter' | 'exit' | 'blink' | 'move' | 'teleport' | 'swap' | 'zoom';
+export type StepAction = 'enter' | 'exit' | 'blink' | 'move' | 'teleport' | 'swap' | 'none';
 
 export interface AnimationStep {
   id: string;
@@ -73,6 +73,23 @@ export interface AnimationStep {
   originalPosition?: { x: number; y: number };
   /** Shape IDs to exit (for swap action) */
   exitShapeIds?: string[];
+  /** Captured camera position — optional for any step. If set, camera animates to this view when step plays. */
+  cameraPosition?: { x: number; y: number; z: number };
+  /** Optional audio clip to play when this step is reached */
+  audio?: {
+    /** Base64-encoded audio data (memory only — not saved to localStorage) */
+    data: string;
+    /** Original file name for re-upload reference */
+    fileName: string;
+    /** Start playback from this second */
+    startTime: number;
+    /** Stop playback at this second */
+    endTime: number;
+    /** Loop between startTime and endTime until next step */
+    loop: boolean;
+    /** Volume 0-1 */
+    volume: number;
+  };
 }
 
 /**

@@ -24,7 +24,7 @@ export const EMPTY_DIAGRAM: DiagramData = {
   edgeType: 'solid',
   pathType: 'bezier',
   arrowType: 'arrowclosed',
-  color: '#58a6ff',
+  color: '#2563eb',
 };
 
 // ─── Node catalog ────────────────────────────────────────────────────────────
@@ -90,9 +90,8 @@ export const NODE_CATALOG: NodeCatalogItem[] = [
   { type: 'shape', category: 'General', label: 'Firewall', icon: '\uD83D\uDEE1\uFE0F', bg: 'linear-gradient(135deg, #2e1a1a, #3a2020)', border: '#f97583', sub: 'Security' },
   { type: 'shape', category: 'General', label: 'Client', icon: '\uD83D\uDCBB', bg: 'linear-gradient(135deg, #1a2332, #1e2d40)', border: '#58a6ff', sub: 'Browser/App' },
 
-  // ── Content Nodes (text, image, rich content — connectable with lines) ──
-  { type: 'content', category: 'Content', label: 'Text', icon: '\uD83D\uDCDD', bg: 'transparent', border: 'transparent', sub: 'Text block' },
-  { type: 'content', category: 'Content', label: 'Text + Image', icon: '\uD83D\uDDBC\uFE0F', bg: 'transparent', border: 'transparent', sub: 'Rich content' },
+  // ── Content Nodes (markdown-capable, connectable with lines) ──
+  { type: 'content', category: 'Content', label: 'Markdown', icon: '\uD83D\uDCDD', bg: 'transparent', border: 'transparent', sub: 'Rich text node' },
 ];
 
 // ─── Edge catalogs ───────────────────────────────────────────────────────────
@@ -150,11 +149,13 @@ export interface ColorOption {
 }
 
 export const COLORS: ColorOption[] = [
-  { id: '#58a6ff', label: 'Blue' },
-  { id: '#7ee787', label: 'Green' },
-  { id: '#f97583', label: 'Red' },
-  { id: '#d2a8ff', label: 'Purple' },
-  { id: '#f0b72f', label: 'Amber' },
-  { id: '#79c0ff', label: 'Cyan' },
-  { id: '#8b949e', label: 'Gray' },
+  { id: '#2563eb', label: 'Blue' },
+  { id: '#16a34a', label: 'Green' },
+  { id: '#dc2626', label: 'Red' },
+  { id: '#7c3aed', label: 'Purple' },
+  { id: '#d97706', label: 'Amber' },
+  { id: '#0891b2', label: 'Teal' },
+  { id: '#be185d', label: 'Rose' },
+  { id: '#4b5563', label: 'Gray' },
+  { id: '#0f172a', label: 'Dark' },
 ];

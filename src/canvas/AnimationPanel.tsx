@@ -1,12 +1,13 @@
 import {
   Plus, Trash2, ChevronUp, ChevronDown,
   Type, Square, ArrowRight, Image, Pencil, Circle, Triangle, Star, Minus,
-  GitBranch, Cable, Crosshair,
+  GitBranch, Cable, Crosshair, Volume2, VolumeX,
 } from 'lucide-react';
 import type { AnimationStep, AnimationType, StepAction } from './types';
 import type { Editor } from 'tldraw';
 import type { DiagramData } from './diagram/diagramTypes';
 import { getIconComponent } from './diagram/iconRegistry';
+import { useRef, useCallback } from 'react';
 
 interface AnimationPanelProps {
   steps: AnimationStep[];
@@ -20,13 +21,13 @@ interface AnimationPanelProps {
 }
 
 const actionOptions: { value: StepAction; label: string; desc: string }[] = [
+  { value: 'none', label: 'None', desc: 'Camera only, no animation' },
   { value: 'enter', label: 'Enter', desc: 'Shapes appear' },
   { value: 'exit', label: 'Exit', desc: 'Shapes disappear' },
   { value: 'blink', label: 'Blink', desc: 'Flash in place' },
   { value: 'move', label: 'Move', desc: 'Slide to position' },
   { value: 'teleport', label: 'Teleport', desc: 'Jump to position' },
   { value: 'swap', label: 'Swap', desc: 'Replace shapes' },
-  { value: 'zoom', label: 'Zoom', desc: 'Camera zoom to shapes' },
 ];
 
 const animationTypes: { value: AnimationType; label: string }[] = [
@@ -149,6 +150,14 @@ export default function AnimationPanel({
   onPickDestination,
 }: AnimationPanelProps) {
 
+  // Stores camera position from before user starts zooming for capture
+  const preZoomCameraRef = useRef<Record<string, { x: number; y: number; z: number }>>({});
+  const audioFileRef = useRef<HTMLInputElement>(null);
+  const audioPreviewRef = useRef<HTMLAudioElement | null>(null);
+  const audioPreviewCtxRef = useRef<AudioContext | null>(null);
+  const audioPreviewGainRef = useRef<GainNode | null>(null);
+  const audioUploadStepRef = useRef<string>('');
+
   const addStep = () => {
     let selectedIds: string[] = [];
 
@@ -174,6 +183,11 @@ export default function AnimationPanel({
       label: `Step ${steps.length + 1}`,
       action: 'enter',
     };
+    // Save current camera at step creation — used to restore after capture
+    if (editor) {
+      const cam = editor.getCamera();
+      preZoomCameraRef.current[newStep.id] = { x: cam.x, y: cam.y, z: cam.z };
+    }
     onStepsChange([...steps, newStep]);
   };
 
@@ -205,18 +219,105 @@ export default function AnimationPanel({
     onStepsChange(steps.map(s => s.id === id ? { ...s, ...updates } : s));
   };
 
+  const handleAudioUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    const fileName = file.name;
+    reader.onload = () => {
+      const stepId = audioUploadStepRef.current;
+      if (!stepId) return;
+      const existingStep = steps.find(s => s.id === stepId);
+      const existingAudio = existingStep?.audio;
+      onStepsChange(steps.map(s => s.id === stepId ? { ...s, audio: {
+        data: reader.result as string,
+        fileName,
+        startTime: existingAudio?.startTime ?? 0,
+        endTime: existingAudio?.endTime ?? 5,
+        loop: existingAudio?.loop ?? false,
+        volume: existingAudio?.volume ?? 0.8,
+      }} : s));
+    };
+    reader.readAsDataURL(file);
+    e.target.value = '';
+  }, [steps, onStepsChange]);
+
+  const previewAudio = useCallback((step: AnimationStep) => {
+    if (!step.audio || !step.audio.data) return;
+    if (audioPreviewRef.current) {
+      audioPreviewRef.current.pause();
+      audioPreviewRef.current = null;
+    }
+    if (!audioPreviewCtxRef.current) {
+      audioPreviewCtxRef.current = new AudioContext();
+    }
+    const ctx = audioPreviewCtxRef.current;
+    const audio = new Audio(step.audio.data);
+    audio.currentTime = step.audio.startTime;
+
+    const source = ctx.createMediaElementSource(audio);
+    const gain = ctx.createGain();
+    gain.gain.value = Math.max(0, Math.min(1, step.audio.volume));
+    source.connect(gain);
+    gain.connect(ctx.destination);
+    audioPreviewGainRef.current = gain;
+
+    audio.play();
+    const endTime = step.audio.endTime;
+    const startTime = step.audio.startTime;
+    const loop = step.audio.loop;
+
+    audio.addEventListener('timeupdate', () => {
+      if (audio.currentTime >= endTime) {
+        if (loop) {
+          audio.currentTime = startTime;
+        } else {
+          audio.pause();
+          audioPreviewRef.current = null;
+          audioPreviewGainRef.current = null;
+        }
+      }
+    });
+    audio.addEventListener('ended', () => {
+      if (loop) {
+        audio.currentTime = startTime;
+        audio.play().catch(() => {});
+      } else {
+        audioPreviewRef.current = null;
+        audioPreviewGainRef.current = null;
+      }
+    });
+    audioPreviewRef.current = audio;
+  }, []);
+
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between px-4 py-2 border-b border-slate-700/50">
         <span className="text-xs text-slate-400">{steps.length} step{steps.length !== 1 ? 's' : ''}</span>
-        <button
-          onClick={addStep}
-          className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
-          title="Select shapes or nodes, then click to add step"
-        >
-          <Plus className="w-3 h-3" />
-          Add
-        </button>
+        <div className="flex items-center gap-1.5">
+          {steps.length > 0 && (
+            <button
+              onClick={() => {
+                if (window.confirm('Are you sure you want to delete all steps?')) {
+                  onStepsChange([]);
+                }
+              }}
+              className="flex items-center gap-1 px-2 py-1.5 text-red-400 text-xs font-medium rounded-lg hover:bg-red-500/10 transition-colors border border-red-500/20"
+              title="Clear all steps"
+            >
+              <Trash2 className="w-3 h-3" />
+              Clear
+            </button>
+          )}
+          <button
+            onClick={addStep}
+            className="flex items-center gap-1 px-2.5 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            title="Select shapes or nodes, then click to add step"
+          >
+            <Plus className="w-3 h-3" />
+            Add
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-y-auto p-2 space-y-1.5">
@@ -326,12 +427,169 @@ export default function AnimationPanel({
                       )}
                     </div>
                   )}
+
+                  {/* Camera capture — available on any step type */}
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => {
+                        if (!editor) return;
+                        // Capture current camera view
+                        const cam = editor.getCamera();
+                        updateStep(step.id, { cameraPosition: { x: cam.x, y: cam.y, z: cam.z } });
+                        // Restore to pre-capture view (saved when step was created)
+                        const preCam = preZoomCameraRef.current[step.id];
+                        if (preCam) {
+                          editor.setCamera(preCam, { force: true });
+                        }
+                      }}
+                      className={`flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium transition-all ${step.cameraPosition ? 'bg-indigo-500/15 text-indigo-300 border border-indigo-500/30' : 'bg-slate-700/50 text-slate-300 border border-slate-600/30 hover:bg-slate-700'}`}
+                    >
+                      📷
+                      {step.cameraPosition
+                        ? `View: ${Math.round(step.cameraPosition.z * 100)}%`
+                        : 'Capture View'}
+                    </button>
+                    {step.cameraPosition && (
+                      <button
+                        onClick={() => {
+                          updateStep(step.id, { cameraPosition: undefined });
+                          delete preZoomCameraRef.current[step.id];
+                        }}
+                        className="px-1.5 py-1 rounded text-[10px] font-medium text-red-400 hover:bg-red-500/10 border border-red-500/20"
+                        title="Remove captured view"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Audio — optional sound effect for this step */}
+                  <div className="flex flex-col gap-1.5">
+                    {step.audio && step.audio.data ? (
+                      <>
+                        <div className="flex items-center gap-2">
+                          <Volume2 className="w-3 h-3 text-emerald-400 flex-shrink-0" />
+                          <span className="text-[10px] text-emerald-300 font-medium truncate max-w-[100px]" title={step.audio.fileName}>{step.audio.fileName || 'Audio'}</span>
+                          <button
+                            onClick={() => previewAudio(step)}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 hover:bg-emerald-500/25"
+                          >
+                            ▶
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (audioPreviewRef.current) { audioPreviewRef.current.pause(); audioPreviewRef.current = null; }
+                            }}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-700/50 text-slate-300 border border-slate-600/30 hover:bg-slate-700"
+                          >
+                            ⏹
+                          </button>
+                          <button
+                            onClick={() => updateStep(step.id, { audio: undefined })}
+                            className="px-1.5 py-0.5 rounded text-[9px] font-medium text-red-400 hover:bg-red-500/10 border border-red-500/20"
+                          >
+                            ✕
+                          </button>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[9px] text-slate-500 w-8">Start</span>
+                          <input
+                            type="number"
+                            value={step.audio.startTime}
+                            onChange={(e) => updateStep(step.id, { audio: { ...step.audio!, startTime: Math.max(0, Number(e.target.value)) } })}
+                            className="w-12 text-[10px] border border-slate-600/50 rounded px-1.5 py-1 bg-slate-800/50 text-slate-200"
+                            min={0}
+                            step={0.5}
+                          />
+                          <span className="text-[9px] text-slate-500 w-6">End</span>
+                          <input
+                            type="number"
+                            value={step.audio.endTime}
+                            onChange={(e) => updateStep(step.id, { audio: { ...step.audio!, endTime: Math.max(0, Number(e.target.value)) } })}
+                            className="w-12 text-[10px] border border-slate-600/50 rounded px-1.5 py-1 bg-slate-800/50 text-slate-200"
+                            min={0}
+                            step={0.5}
+                          />
+                          <span className="text-[9px] text-slate-500">sec</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <label className="flex items-center gap-1 text-[9px] text-slate-400 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={step.audio.loop}
+                              onChange={(e) => updateStep(step.id, { audio: { ...step.audio!, loop: e.target.checked } })}
+                              style={{ width: 10, height: 10 }}
+                            />
+                            Loop
+                          </label>
+                          <span className="text-[9px] text-slate-500">Vol</span>
+                          <input
+                            type="range"
+                            min={0}
+                            max={100}
+                            step={5}
+                            value={Math.round(step.audio.volume * 100)}
+                            onChange={(e) => {
+                              const newVol = Number(e.target.value) / 100;
+                              updateStep(step.id, { audio: { ...step.audio!, volume: newVol } });
+                              // Apply immediately via GainNode
+                              if (audioPreviewGainRef.current) {
+                                audioPreviewGainRef.current.gain.value = newVol;
+                              }
+                            }}
+                            className="w-20 h-1.5"
+                            style={{ accentColor: '#10b981' }}
+                          />
+                          <span className="text-[9px] text-slate-500 w-7">{Math.round(step.audio.volume * 100)}%</span>
+                        </div>
+                      </>
+                    ) : step.audio && !step.audio.data ? (
+                      /* Audio config exists but data was stripped (after refresh) — show re-add */
+                      <div className="flex items-center gap-2">
+                        <Volume2 className="w-3 h-3 text-amber-400 flex-shrink-0" />
+                        <button
+                          onClick={() => {
+                            audioUploadStepRef.current = step.id;
+                            audioFileRef.current?.click();
+                          }}
+                          className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-amber-500/10 text-amber-300 border border-amber-500/30 hover:bg-amber-500/20"
+                        >
+                          🔊 Re-add: {step.audio.fileName || 'audio file'}
+                        </button>
+                        <button
+                          onClick={() => updateStep(step.id, { audio: undefined })}
+                          className="px-1.5 py-0.5 rounded text-[9px] font-medium text-red-400 hover:bg-red-500/10 border border-red-500/20"
+                        >
+                          ✕
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => {
+                          audioUploadStepRef.current = step.id;
+                          audioFileRef.current?.click();
+                        }}
+                        className="flex items-center gap-1 px-2 py-1 rounded text-[10px] font-medium bg-slate-700/50 text-slate-300 border border-slate-600/30 hover:bg-slate-700 w-fit"
+                      >
+                        <VolumeX className="w-3 h-3" />
+                        Add Audio
+                      </button>
+                    )}
+                  </div>
                 </div>
               </div>
             );
           })
         )}
       </div>
+      {/* Hidden audio file input */}
+      <input
+        ref={audioFileRef}
+        type="file"
+        accept="audio/*"
+        onChange={handleAudioUpload}
+        style={{ display: 'none' }}
+      />
     </div>
   );
 }

@@ -394,3 +394,8 @@
   opacity: 1;
   pointer-events: all;
 }
+
+/* Hide placeholder text in content nodes when canvas is locked */
+.rf-locked .rf-md-placeholder {
+  display: none !important;
+}

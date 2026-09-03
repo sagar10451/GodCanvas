@@ -20,7 +20,12 @@ function PresentationToolToggle() {
       title={presentationTool === 'laser' ? 'Switch to Hand' : 'Switch to Laser'}
     >
       {presentationTool === 'laser' ? (
-        <span className="w-3 h-3 rounded-full bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="text-red-600">
+          <path d="M12 19l7-7 3 3-7 7-3-3z" />
+          <path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z" />
+          <path d="M2 2l7.586 7.586" />
+          <circle cx="11" cy="11" r="2" fill="#ef4444" stroke="none" />
+        </svg>
       ) : (
         <span className="text-base">✋</span>
       )}
@@ -77,7 +82,7 @@ export default function Header({ searchQuery, onSearchChange }: HeaderProps) {
           </div>
           <div>
             <h1 className="text-xl font-bold text-gray-900 leading-tight">
-              {site.brandName} <span className="text-blue-600">{site.brandAccent}</span>
+              {site.brandName}<span className="text-blue-600">{site.brandAccent}</span>
             </h1>
             {site.brandSubtitle && (
               <p className="text-xs text-gray-500 -mt-0.5">{site.brandSubtitle}</p>

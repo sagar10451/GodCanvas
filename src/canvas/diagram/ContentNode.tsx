@@ -1,80 +1,54 @@
 /**
- * ContentNode — Rich RF node with editable text, image support,
- * configurable background/border/colors, invisible mode, and resize.
- * Connects to all 8 RF edge handles like ShapeNode.
+ * ContentNode — Markdown-capable RF node.
+ * Same rendering as the tldraw Markdown Block shape, plus transparent mode.
+ * Double-click to edit raw markdown, renders formatted content when not editing.
+ * 8 RF handles for edge connections. Resizable.
  */
 
-import { memo, useState, useCallback, useRef } from 'react';
+import { memo, useState, useRef, useEffect, useCallback } from 'react';
 import { Handle, Position, useReactFlow, type NodeProps } from '@xyflow/react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
+import rehypeRaw from 'rehype-raw';
 
-const DEFAULT_W = 200;
-const DEFAULT_H = 80;
-const MIN_W = 80;
-const MIN_H = 40;
+const DEFAULT_W = 350;
+const DEFAULT_H = 200;
+const MIN_W = 120;
+const MIN_H = 80;
 
 interface ContentNodeData {
   label: string;
-  /** 'text' | 'text-image' */
-  mode?: string;
-  /** Node text content */
-  text?: string;
-  /** Base64 image data URL */
-  image?: string;
-  /** Background color or 'transparent' */
-  bgColor?: string;
-  /** Border color or 'transparent' */
-  borderColor?: string;
-  /** Text color */
-  textColor?: string;
-  /** Font size: 'sm' | 'md' | 'lg' */
-  fontSize?: string;
-  /** Bold text */
-  bold?: boolean;
-  /** Text align: 'left' | 'center' | 'right' */
-  textAlign?: string;
-  /** Show background/border or invisible */
-  visible?: boolean;
-  /** Show border */
-  showBorder?: boolean;
-  /** Border radius */
-  borderRadius?: number;
-  /** Show shadow */
-  showShadow?: boolean;
-  /** Image position: 'above' | 'below' */
-  imagePosition?: string;
-  /** Dimensions */
+  content?: string;
+  darkMode?: boolean;
+  transparent?: boolean;
   w?: number;
   h?: number;
   [key: string]: unknown;
 }
 
-const FONT_SIZES: Record<string, number> = { sm: 11, md: 14, lg: 18 };
-const COLOR_PRESETS = ['#e1e4e8', '#58a6ff', '#7ee787', '#f97583', '#d2a8ff', '#f0b72f', '#ff9900', '#ffffff', '#0f172a'];
-const BG_PRESETS = ['transparent', '#0f172a', '#1e293b', '#1a2332', '#2e2a1a', '#1a2e1a', '#2d1a2e', '#2a1a1e', '#ffffff'];
-
 function ContentNodeBase({ id, data, selected }: NodeProps) {
   const d = data as unknown as ContentNodeData;
-  const text = d.text || d.label || 'Double-click to edit';
-  const mode = d.mode || 'text';
-  const bgColor = d.bgColor || 'transparent';
-  const borderColor = d.borderColor || 'transparent';
-  const textColor = d.textColor || '#e1e4e8';
-  const fontSize = FONT_SIZES[d.fontSize || 'md'] || 14;
-  const bold = d.bold ?? false;
-  const textAlign = (d.textAlign || 'center') as 'left' | 'center' | 'right';
-  const isVisible = d.visible !== false;
-  const showBorder = d.showBorder !== false;
-  const borderRadius = d.borderRadius ?? 10;
-  const showShadow = d.showShadow !== false;
-  const imagePosition = d.imagePosition || 'above';
+  const content = d.content || '';
+  const darkMode = d.darkMode !== false;
+  const transparent = d.transparent === true;
+  const hideBorder = d.hideBorder === true;
   const width = d.w || DEFAULT_W;
   const height = d.h || DEFAULT_H;
 
   const { updateNodeData } = useReactFlow();
   const [isEditing, setIsEditing] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const textRef = useRef<HTMLTextAreaElement>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [editContent, setEditContent] = useState(content);
+  const [editDarkMode, setEditDarkMode] = useState(darkMode);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Sync edit state when entering edit mode
+  useEffect(() => {
+    if (isEditing) {
+      setEditContent(content);
+      setEditDarkMode(darkMode);
+      setTimeout(() => textareaRef.current?.focus(), 50);
+    }
+  }, [isEditing, content, darkMode]);
 
   // ─── Resize ──────────────────────────────────────────────────────────────
   const onResizeStart = useCallback((e: React.MouseEvent) => {
@@ -97,394 +71,237 @@ function ContentNodeBase({ id, data, selected }: NodeProps) {
     document.addEventListener('mouseup', onMouseUp);
   }, [id, width, height, updateNodeData]);
 
-  // ─── Text editing ────────────────────────────────────────────────────────
+  // ─── Save edits ──────────────────────────────────────────────────────────
+  const handleSave = useCallback(() => {
+    updateNodeData(id, {
+      content: editContent,
+      darkMode: editDarkMode,
+      label: editContent.split('\n')[0]?.replace(/^#+\s*/, '').slice(0, 30) || 'Markdown',
+    });
+    setIsEditing(false);
+  }, [id, editContent, editDarkMode, updateNodeData]);
+
+  // ─── Double-click to edit ────────────────────────────────────────────────
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
     setIsEditing(true);
-    setTimeout(() => textRef.current?.focus(), 50);
   }, []);
 
-  const handleTextBlur = useCallback(() => {
-    setIsEditing(false);
-    const val = textRef.current?.value || '';
-    updateNodeData(id, { text: val, label: val.split('\n')[0] || 'Text' });
-  }, [id, updateNodeData]);
+  // ─── Toggle transparent ──────────────────────────────────────────────────
+  const toggleTransparent = useCallback(() => {
+    updateNodeData(id, { transparent: !transparent });
+  }, [id, transparent, updateNodeData]);
 
-  const handleTextKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Escape') {
-      setIsEditing(false);
-      handleTextBlur();
-    }
-    e.stopPropagation();
-  }, [handleTextBlur]);
+  const toggleHideBorder = useCallback(() => {
+    updateNodeData(id, { hideBorder: !hideBorder });
+  }, [id, hideBorder, updateNodeData]);
 
-  // ─── Image paste/upload ──────────────────────────────────────────────────
-  const handlePaste = useCallback((e: React.ClipboardEvent) => {
-    const items = e.clipboardData?.items;
-    if (!items) return;
-    for (const item of items) {
-      if (item.type.startsWith('image/')) {
-        e.preventDefault();
-        const file = item.getAsFile();
-        if (!file) return;
-        const reader = new FileReader();
-        reader.onload = () => {
-          updateNodeData(id, { image: reader.result as string, mode: 'text-image' });
-        };
-        reader.readAsDataURL(file);
-        return;
-      }
-    }
-  }, [id, updateNodeData]);
+  // ─── Editing view ────────────────────────────────────────────────────────
+  if (isEditing) {
+    return (
+      <div
+        className={`rf-content-node${selected ? ' rf-selected' : ''}`}
+        style={{
+          width, height, borderRadius: 10,
+          background: '#1e293b',
+          display: 'flex', flexDirection: 'column',
+          overflow: 'hidden',
+          border: '2px solid #8b5cf6',
+          fontFamily: "'Inter', -apple-system, sans-serif",
+          position: 'relative',
+        }}
+      >
+        <Handle id="top-target" type="target" position={Position.Top} />
+        <Handle id="top-source" type="source" position={Position.Top} />
+        <Handle id="left-target" type="target" position={Position.Left} />
+        <Handle id="left-source" type="source" position={Position.Left} />
 
-  const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      updateNodeData(id, { image: reader.result as string, mode: 'text-image' });
-    };
-    reader.readAsDataURL(file);
-  }, [id, updateNodeData]);
+        {/* Toolbar */}
+        <div
+          className="nodrag"
+          style={{
+            display: 'flex', alignItems: 'center', gap: 8, padding: '6px 10px',
+            borderBottom: '1px solid rgba(255,255,255,0.1)',
+            background: 'rgba(0,0,0,0.2)',
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+        >
+          <span style={{ fontSize: 11, color: '#a78bfa', fontWeight: 600 }}>Markdown</span>
+          <div style={{ flex: 1 }} />
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#94a3b8', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={editDarkMode}
+              onChange={(e) => setEditDarkMode(e.target.checked)}
+              style={{ width: 12, height: 12 }}
+            />
+            Dark
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#94a3b8', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={transparent}
+              onChange={() => toggleTransparent()}
+              style={{ width: 12, height: 12 }}
+            />
+            Transparent
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#94a3b8', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={hideBorder}
+              onChange={() => toggleHideBorder()}
+              style={{ width: 12, height: 12 }}
+            />
+            No Border
+          </label>
+          <button
+            onClick={handleSave}
+            style={{
+              background: '#8b5cf6', color: 'white', border: 'none', borderRadius: 4,
+              padding: '3px 10px', fontSize: 10, fontWeight: 600, cursor: 'pointer',
+            }}
+          >
+            Done
+          </button>
+        </div>
 
-  // ─── Settings update helpers ─────────────────────────────────────────────
-  const set = useCallback((updates: Partial<ContentNodeData>) => {
-    updateNodeData(id, updates);
-  }, [id, updateNodeData]);
+        {/* Raw markdown editor */}
+        <textarea
+          ref={textareaRef}
+          value={editContent}
+          onChange={(e) => setEditContent(e.target.value)}
+          spellCheck={false}
+          className="nodrag nowheel"
+          placeholder={"# Write Markdown here\n\nSupports **bold**, *italic*, tables, lists, code blocks, and more."}
+          style={{
+            flex: 1, background: 'transparent', color: '#e2e8f0',
+            border: 'none', outline: 'none', resize: 'none',
+            padding: '12px 16px', fontSize: 13, lineHeight: 1.6,
+            fontFamily: "'JetBrains Mono', 'Fira Code', monospace",
+            tabSize: 2,
+          }}
+          onPointerDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => {
+            e.stopPropagation();
+            if (e.key === 'Tab') {
+              e.preventDefault();
+              const start = e.currentTarget.selectionStart;
+              const end = e.currentTarget.selectionEnd;
+              setEditContent(editContent.substring(0, start) + '  ' + editContent.substring(end));
+              setTimeout(() => {
+                e.currentTarget.selectionStart = e.currentTarget.selectionEnd = start + 2;
+              }, 0);
+            }
+          }}
+        />
 
-  // ─── Build styles ────────────────────────────────────────────────────────
-  const nodeStyle: React.CSSProperties = {
-    width,
-    height,
-    borderRadius,
-    position: 'relative',
-    display: 'flex',
-    flexDirection: 'column',
-    overflow: 'hidden',
-    ...(isVisible
-      ? {
-          background: bgColor === 'transparent' ? 'transparent' : bgColor,
-          border: showBorder && borderColor !== 'transparent' ? `2px solid ${borderColor}` : '2px solid transparent',
-          boxShadow: showShadow && bgColor !== 'transparent' ? '0 4px 20px rgba(0,0,0,0.4)' : 'none',
-        }
-      : {
-          background: 'transparent',
-          border: '2px dashed rgba(100,116,139,0.3)',
-          boxShadow: 'none',
-        }),
-  };
+        <Handle id="bottom-target" type="target" position={Position.Bottom} />
+        <Handle id="bottom-source" type="source" position={Position.Bottom} />
+        <Handle id="right-target" type="target" position={Position.Right} />
+        <Handle id="right-source" type="source" position={Position.Right} />
+        <div className="rf-resize-handle nodrag" onMouseDown={onResizeStart} />
+      </div>
+    );
+  }
 
-  const hasImage = mode === 'text-image' && d.image;
+  // ─── Rendered markdown view ──────────────────────────────────────────────
+
+  const bg = transparent ? 'transparent' : (darkMode ? '#1e293b' : '#ffffff');
+  const textColor = darkMode ? '#e2e8f0' : '#1e293b';
+  const borderColor = transparent ? 'transparent' : (darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)');
+  const mutedColor = darkMode ? '#94a3b8' : '#64748b';
+  const uniqueClass = `rf-md-${id.replace(/[^a-zA-Z0-9]/g, '')}`;
 
   return (
     <div
       className={`rf-content-node${selected ? ' rf-selected' : ''}`}
-      style={nodeStyle}
-      onPaste={handlePaste}
+      style={{
+        width, height, borderRadius: 10,
+        position: 'relative',
+        ...(transparent
+          ? { background: 'transparent', border: (hideBorder || !selected) ? '2px solid transparent' : '2px dashed rgba(139,92,246,0.4)', boxShadow: 'none' }
+          : {
+              background: bg,
+              border: `2px solid ${darkMode ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)'}`,
+              boxShadow: darkMode ? '0 4px 24px rgba(0,0,0,0.3)' : '0 4px 24px rgba(0,0,0,0.08)',
+            }
+        ),
+      }}
+      onDoubleClick={handleDoubleClick}
     >
-      {/* Handles — same 8 as ShapeNode */}
       <Handle id="top-target" type="target" position={Position.Top} />
       <Handle id="top-source" type="source" position={Position.Top} />
       <Handle id="left-target" type="target" position={Position.Left} />
       <Handle id="left-source" type="source" position={Position.Left} />
 
-      {/* Content area */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', padding: bgColor === 'transparent' && !isVisible ? '4px' : '10px 14px', overflow: 'hidden', justifyContent: 'center' }}>
-        {/* Image above text */}
-        {hasImage && imagePosition === 'above' && (
-          <img src={d.image} alt="" style={{ width: '100%', maxHeight: '60%', objectFit: 'contain', borderRadius: 6, marginBottom: 6 }} />
-        )}
-
-        {/* Text area */}
-        {isEditing ? (
-          <textarea
-            ref={textRef}
-            defaultValue={text}
-            onBlur={handleTextBlur}
-            onKeyDown={handleTextKeyDown}
-            className="nodrag"
-            style={{
-              flex: 1,
-              resize: 'none',
-              background: 'rgba(0,0,0,0.3)',
-              border: '1px solid rgba(88,166,255,0.3)',
-              borderRadius: 6,
-              padding: '6px 8px',
-              color: textColor,
-              fontSize,
-              fontWeight: bold ? 700 : 400,
-              textAlign,
-              outline: 'none',
-              fontFamily: 'inherit',
-              lineHeight: 1.4,
-            }}
-          />
+      {/* Markdown rendered content */}
+      <div
+        className={`${uniqueClass} nowheel`}
+        style={{
+          width: '100%', height: '100%',
+          borderRadius: 10, overflow: 'auto',
+          color: textColor,
+          fontFamily: "'Inter', -apple-system, sans-serif",
+          padding: '16px 20px', fontSize: 14, lineHeight: 1.7,
+        }}
+        onWheelCapture={(e) => e.stopPropagation()}
+      >
+        <style>{`
+          .${uniqueClass} h1 { font-size: 1.8em; font-weight: 700; margin: 0 0 0.5em; border-bottom: 2px solid ${borderColor}; padding-bottom: 0.3em; }
+          .${uniqueClass} h2 { font-size: 1.4em; font-weight: 600; margin: 1.2em 0 0.4em; color: ${darkMode ? '#a78bfa' : '#7c3aed'}; }
+          .${uniqueClass} h3 { font-size: 1.15em; font-weight: 600; margin: 1em 0 0.3em; }
+          .${uniqueClass} p { margin: 0.6em 0; }
+          .${uniqueClass} ul, .${uniqueClass} ol { padding-left: 1.5em; margin: 0.5em 0; }
+          .${uniqueClass} li { margin: 0.25em 0; }
+          .${uniqueClass} strong { font-weight: 600; color: ${darkMode ? '#f1f5f9' : '#0f172a'}; }
+          .${uniqueClass} em { font-style: italic; }
+          .${uniqueClass} code {
+            background: ${darkMode ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.06)'};
+            padding: 2px 6px; border-radius: 4px; font-size: 0.85em;
+            font-family: 'JetBrains Mono', 'Fira Code', monospace;
+          }
+          .${uniqueClass} pre {
+            background: ${darkMode ? '#0f172a' : '#f1f5f9'};
+            padding: 12px 16px; border-radius: 8px; overflow-x: auto;
+            margin: 0.8em 0; font-size: 0.85em; line-height: 1.5;
+          }
+          .${uniqueClass} pre code { background: none; padding: 0; }
+          .${uniqueClass} blockquote {
+            border-left: 3px solid ${darkMode ? '#8b5cf6' : '#7c3aed'};
+            padding: 0.5em 1em; margin: 0.8em 0;
+            background: ${darkMode ? 'rgba(139,92,246,0.08)' : 'rgba(124,58,237,0.05)'};
+            border-radius: 0 6px 6px 0;
+          }
+          .${uniqueClass} blockquote p { margin: 0.2em 0; color: ${mutedColor}; }
+          .${uniqueClass} table { width: 100%; border-collapse: collapse; margin: 0.8em 0; font-size: 0.9em; }
+          .${uniqueClass} th, .${uniqueClass} td {
+            border: 1px solid ${darkMode ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.1)'};
+            padding: 8px 12px; text-align: left;
+          }
+          .${uniqueClass} th {
+            background: ${darkMode ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.03)'};
+            font-weight: 600;
+          }
+          .${uniqueClass} a { color: ${darkMode ? '#a78bfa' : '#7c3aed'}; text-decoration: none; }
+          .${uniqueClass} a:hover { text-decoration: underline; }
+          .${uniqueClass} hr { border: none; border-top: 1px solid ${borderColor}; margin: 1.5em 0; }
+          .${uniqueClass} img { max-width: 100%; border-radius: 6px; }
+          .${uniqueClass} del { color: ${mutedColor}; }
+        `}</style>
+        {content ? (
+          <ReactMarkdown remarkPlugins={[remarkGfm]} rehypePlugins={[rehypeRaw]}>
+            {content}
+          </ReactMarkdown>
         ) : (
-          <div
-            onDoubleClick={handleDoubleClick}
-            style={{
-              flex: hasImage ? 'none' : 1,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: textAlign === 'center' ? 'center' : textAlign === 'right' ? 'flex-end' : 'flex-start',
-              color: textColor,
-              fontSize,
-              fontWeight: bold ? 700 : 400,
-              textAlign,
-              lineHeight: 1.4,
-              cursor: 'text',
-              whiteSpace: 'pre-wrap',
-              wordBreak: 'break-word',
-              overflow: 'hidden',
-              userSelect: 'none',
-              minHeight: 20,
-            }}
-          >
-            {text}
-          </div>
-        )}
-
-        {/* Image below text */}
-        {hasImage && imagePosition === 'below' && (
-          <img src={d.image} alt="" style={{ width: '100%', maxHeight: '60%', objectFit: 'contain', borderRadius: 6, marginTop: 6 }} />
+          <p className="rf-md-placeholder" style={{ color: mutedColor, fontStyle: 'italic' }}>Double-click to add markdown content</p>
         )}
       </div>
-
-      {/* Settings gear — click to toggle settings panel */}
-      {selected && (
-        <button
-          onClick={(e) => { e.stopPropagation(); setShowSettings(s => !s); }}
-          className="nodrag"
-          style={{
-            position: 'absolute',
-            top: -10,
-            right: -10,
-            width: 22,
-            height: 22,
-            borderRadius: '50%',
-            background: '#1e293b',
-            border: '1.5px solid #475569',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            fontSize: 11,
-            cursor: 'pointer',
-            zIndex: 20,
-          }}
-          title="Node settings"
-        >
-          ⚙️
-        </button>
-      )}
-
-      {/* Settings panel */}
-      {selected && showSettings && (
-        <div
-          className="nodrag nowheel"
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'absolute',
-            top: -6,
-            left: width + 8,
-            width: 200,
-            background: '#0f172a',
-            border: '1px solid #334155',
-            borderRadius: 10,
-            padding: '10px 12px',
-            zIndex: 30,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 8,
-            fontSize: 10,
-            color: '#94a3b8',
-            boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
-          }}
-        >
-          <div style={{ fontWeight: 700, fontSize: 9, textTransform: 'uppercase', letterSpacing: 1, color: '#64748b' }}>Node Settings</div>
-
-          {/* Visible toggle */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-            <input type="checkbox" checked={isVisible} onChange={() => set({ visible: !isVisible })} style={{ accentColor: '#3b82f6' }} />
-            Show background
-          </label>
-
-          {/* Border toggle */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-            <input type="checkbox" checked={showBorder} onChange={() => set({ showBorder: !showBorder })} style={{ accentColor: '#3b82f6' }} />
-            Show border
-          </label>
-
-          {/* Shadow toggle */}
-          <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
-            <input type="checkbox" checked={showShadow} onChange={() => set({ showShadow: !showShadow })} style={{ accentColor: '#3b82f6' }} />
-            Shadow
-          </label>
-
-          {/* Background color */}
-          <div>
-            <div style={{ marginBottom: 4, fontWeight: 600 }}>Background</div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {BG_PRESETS.map(c => (
-                <div
-                  key={c}
-                  onClick={() => set({ bgColor: c })}
-                  style={{
-                    width: 18, height: 18, borderRadius: 4, cursor: 'pointer',
-                    background: c === 'transparent' ? 'repeating-conic-gradient(#334155 0% 25%, #1e293b 0% 50%) 50% / 8px 8px' : c,
-                    border: bgColor === c ? '2px solid #3b82f6' : '1px solid #475569',
-                  }}
-                  title={c}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Border color */}
-          {showBorder && (
-            <div>
-              <div style={{ marginBottom: 4, fontWeight: 600 }}>Border Color</div>
-              <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                {COLOR_PRESETS.map(c => (
-                  <div
-                    key={c}
-                    onClick={() => set({ borderColor: c })}
-                    style={{
-                      width: 18, height: 18, borderRadius: 4, cursor: 'pointer',
-                      background: c,
-                      border: borderColor === c ? '2px solid #3b82f6' : '1px solid #475569',
-                    }}
-                    title={c}
-                  />
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Text color */}
-          <div>
-            <div style={{ marginBottom: 4, fontWeight: 600 }}>Text Color</div>
-            <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-              {COLOR_PRESETS.map(c => (
-                <div
-                  key={c}
-                  onClick={() => set({ textColor: c })}
-                  style={{
-                    width: 18, height: 18, borderRadius: 4, cursor: 'pointer',
-                    background: c,
-                    border: textColor === c ? '2px solid #3b82f6' : '1px solid #475569',
-                  }}
-                  title={c}
-                />
-              ))}
-            </div>
-          </div>
-
-          {/* Font size */}
-          <div>
-            <div style={{ marginBottom: 4, fontWeight: 600 }}>Font Size</div>
-            <div style={{ display: 'flex', gap: 4 }}>
-              {(['sm', 'md', 'lg'] as const).map(s => (
-                <button
-                  key={s}
-                  onClick={() => set({ fontSize: s })}
-                  style={{
-                    padding: '2px 10px', borderRadius: 4, cursor: 'pointer', fontSize: 10, fontWeight: 600,
-                    background: (d.fontSize || 'md') === s ? 'rgba(59,130,246,0.2)' : '#1e293b',
-                    border: (d.fontSize || 'md') === s ? '1px solid #3b82f6' : '1px solid #334155',
-                    color: (d.fontSize || 'md') === s ? '#3b82f6' : '#94a3b8',
-                  }}
-                >
-                  {s.toUpperCase()}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Bold + Align */}
-          <div style={{ display: 'flex', gap: 8 }}>
-            <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer' }}>
-              <input type="checkbox" checked={bold} onChange={() => set({ bold: !bold })} style={{ accentColor: '#3b82f6' }} />
-              <b>Bold</b>
-            </label>
-            <div style={{ display: 'flex', gap: 2 }}>
-              {(['left', 'center', 'right'] as const).map(a => (
-                <button
-                  key={a}
-                  onClick={() => set({ textAlign: a })}
-                  style={{
-                    padding: '2px 6px', borderRadius: 3, cursor: 'pointer', fontSize: 10,
-                    background: textAlign === a ? 'rgba(59,130,246,0.2)' : 'transparent',
-                    border: textAlign === a ? '1px solid #3b82f6' : '1px solid transparent',
-                    color: textAlign === a ? '#3b82f6' : '#64748b',
-                  }}
-                >
-                  {a === 'left' ? '⬅' : a === 'center' ? '⬌' : '➡'}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Border radius */}
-          <div>
-            <div style={{ marginBottom: 4, fontWeight: 600 }}>Corner Radius: {borderRadius}px</div>
-            <input
-              type="range"
-              min={0}
-              max={30}
-              value={borderRadius}
-              onChange={(e) => set({ borderRadius: Number(e.target.value) })}
-              style={{ width: '100%', accentColor: '#3b82f6' }}
-            />
-          </div>
-
-          {/* Image controls */}
-          <div>
-            <div style={{ marginBottom: 4, fontWeight: 600 }}>Image</div>
-            <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                style={{
-                  padding: '3px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
-                  background: '#1e293b', border: '1px solid #334155', color: '#94a3b8',
-                }}
-              >
-                Upload
-              </button>
-              {d.image && (
-                <>
-                  <button
-                    onClick={() => set({ imagePosition: imagePosition === 'above' ? 'below' : 'above' })}
-                    style={{
-                      padding: '3px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
-                      background: '#1e293b', border: '1px solid #334155', color: '#94a3b8',
-                    }}
-                  >
-                    {imagePosition === 'above' ? 'Img ↑' : 'Img ↓'}
-                  </button>
-                  <button
-                    onClick={() => set({ image: undefined, mode: 'text' })}
-                    style={{
-                      padding: '3px 8px', borderRadius: 4, fontSize: 10, cursor: 'pointer',
-                      background: '#1e293b', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171',
-                    }}
-                  >
-                    Remove
-                  </button>
-                </>
-              )}
-              <input ref={fileInputRef} type="file" accept="image/*" onChange={handleImageUpload} style={{ display: 'none' }} />
-            </div>
-            <div style={{ fontSize: 9, color: '#64748b', marginTop: 3 }}>Or paste image with Cmd+V on the node</div>
-          </div>
-        </div>
-      )}
 
       <Handle id="bottom-target" type="target" position={Position.Bottom} />
       <Handle id="bottom-source" type="source" position={Position.Bottom} />
       <Handle id="right-target" type="target" position={Position.Right} />
       <Handle id="right-source" type="source" position={Position.Right} />
-
-      {/* Resize handle */}
       <div className="rf-resize-handle nodrag" onMouseDown={onResizeStart} />
     </div>
   );

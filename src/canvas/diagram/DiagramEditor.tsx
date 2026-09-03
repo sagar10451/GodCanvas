@@ -136,11 +136,21 @@ function FlowCanvas({
   useEffect(() => {
     if (!pendingNode) return;
     const { item, position } = pendingNode;
+    const isContent = item.type === 'content';
     const newNode: Node = {
       id: getNodeId(),
       type: item.type,
       position,
-      data: { label: item.label, icon: item.icon, bg: item.bg, border: item.border, sub: item.sub },
+      data: isContent
+        ? {
+            label: item.label,
+            content: '',
+            darkMode: true,
+            transparent: item.label.includes('transparent'),
+            w: 350,
+            h: 200,
+          }
+        : { label: item.label, icon: item.icon, bg: item.bg, border: item.border, sub: item.sub },
     };
     setNodes(nds => [...nds, newNode]);
     onPendingNodeConsumed();
@@ -301,11 +311,30 @@ function FlowCanvas({
         : { x: e.clientX - 200, y: e.clientY - 100 };
 
       explicitSave();
+      const isContent = item.type === 'content';
       const newNode: Node = {
         id: getNodeId(),
         type: item.type,
         position,
-        data: { label: item.label, icon: item.icon, bg: item.bg, border: item.border, sub: item.sub },
+        data: isContent
+          ? {
+              label: item.label,
+              text: item.label === 'Text + Image' ? 'Double-click to edit' : 'Double-click to edit',
+              mode: item.label === 'Text + Image' ? 'text-image' : 'text',
+              bgColor: '#1e293b',
+              borderColor: '#475569',
+              textColor: '#e1e4e8',
+              fontSize: 'md',
+              bold: false,
+              textAlign: 'center',
+              visible: true,
+              showBorder: true,
+              borderRadius: 10,
+              showShadow: true,
+              w: 200,
+              h: 80,
+            }
+          : { label: item.label, icon: item.icon, bg: item.bg, border: item.border, sub: item.sub },
       };
       setNodes(nds => [...nds, newNode]);
     } catch { /* invalid drag data */ }

@@ -31,6 +31,7 @@ export function getGridColumns(path: string): number {
 
 export const countLabels: Record<string, string> = {
   'root': 'Topics',
+  '/java': 'Topics',
 };
 
 /**
