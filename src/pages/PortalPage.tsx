@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { useState } from 'react';
-import { motion } from 'framer-motion';
+import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, Search, ZoomIn } from 'lucide-react';
 import { usePortal } from '../data/portalContext';
 import { getGridColumns, getCountLabel } from '../data/gridConfig';
@@ -122,9 +122,13 @@ function CardGrid({ nodes, searchQuery, onSearchChange, basePath, breadcrumbs, s
     }).catch(() => { /* ignore on production */ });
   };
 
-  const filtered = nodes.filter(() => {
-    // Search disabled for now — always show all
-    return true;
+  const filtered = nodes.filter((node) => {
+    if (!searchQuery.trim()) return true;
+    const q = searchQuery.toLowerCase().trim();
+    return (
+      node.title.toLowerCase().includes(q) ||
+      (node.description || '').toLowerCase().includes(q)
+    );
   });
 
   const gridColsClass = {
@@ -262,13 +266,20 @@ function CardGrid({ nodes, searchQuery, onSearchChange, basePath, breadcrumbs, s
 
       {/* Card Grid */}
       <div className={`grid ${gridColsClass} gap-5`}>
-        {filtered.map((node, index) => (
-          <motion.div
-            key={node.id}
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3, delay: index * 0.04 }}
-          >
+        <AnimatePresence mode="popLayout">
+          {filtered.map((node) => (
+            <motion.div
+              key={node.id}
+              layout
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              transition={{
+                opacity: { duration: 0.2 },
+                scale: { duration: 0.2 },
+                layout: { type: 'spring', stiffness: 500, damping: 35 },
+              }}
+            >
             <Link
               to={`${basePath}/${node.slug}`}
               className={`group block bg-white rounded-2xl ${cardPadding} border-2 border-indigo-200 shadow-sm hover:shadow-lg hover:-translate-y-1 hover:border-indigo-400 transition-all duration-300 relative overflow-hidden ${!isTopLevel ? 'h-full' : ''}`}
@@ -322,6 +333,7 @@ function CardGrid({ nodes, searchQuery, onSearchChange, basePath, breadcrumbs, s
             </Link>
           </motion.div>
         ))}
+        </AnimatePresence>
       </div>
 
     </main>
