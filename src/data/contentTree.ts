@@ -14,6 +14,8 @@ export interface ContentNode {
   color: string;
   /** 'live' (default) or 'coming-soon' — shows ribbon on card */
   status?: 'live' | 'coming-soon';
+  /** Optional YouTube URL for this level (channel, playlist, or video) */
+  youtubeUrl?: string;
   /** Child nodes — if empty, this is a leaf (canvas lesson) */
   children: ContentNode[];
 }

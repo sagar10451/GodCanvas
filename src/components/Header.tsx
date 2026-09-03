@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { Search, BookOpen, Code2, Maximize, Info } from 'lucide-react';
 import { usePortal } from '../data/portalContext';
 import { usePresentation } from '../data/presentationContext';
+import { findNodeByPath } from '../data/contentTree';
 import { useState } from 'react';
 
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -35,7 +36,7 @@ interface HeaderProps {
 export default function Header({ searchQuery, onSearchChange }: HeaderProps) {
   const { togglePresentation, isPresenting } = usePresentation();
   const [showAbout, setShowAbout] = useState(false);
-  const { site, slugs } = usePortal();
+  const { site, slugs, content } = usePortal();
 
   const isTopLevel = slugs.length === 0;
 
@@ -45,6 +46,18 @@ export default function Header({ searchQuery, onSearchChange }: HeaderProps) {
     youtubeLabel = 'Go to YouTube Playlist';
   } else if (slugs.length >= 2) {
     youtubeLabel = 'Watch this on YouTube';
+  }
+
+  // Resolve YouTube URL: walk from deepest node up to root, fall back to site config
+  let youtubeUrl = site.youtubeUrl;
+  if (slugs.length > 0) {
+    for (let depth = slugs.length; depth >= 1; depth--) {
+      const node = findNodeByPath(content, slugs.slice(0, depth));
+      if (node?.youtubeUrl) {
+        youtubeUrl = node.youtubeUrl;
+        break;
+      }
+    }
   }
 
   // Hide header search on non-top-level pages (topic pages have their own search in the dark header)
@@ -120,7 +133,7 @@ export default function Header({ searchQuery, onSearchChange }: HeaderProps) {
           {/* YouTube Button — hidden on localhost */}
           {!isLocalhost && (
             <a
-              href={site.youtubeUrl}
+              href={youtubeUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-2 bg-red-50 hover:bg-red-100 text-red-600 px-4 py-2.5 rounded-xl transition-colors text-sm font-medium border-2 border-red-300"

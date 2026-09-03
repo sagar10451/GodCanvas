@@ -57,14 +57,14 @@ Interactive canvas-based notes platform with step-by-step animations, system des
 ### Branding & Site Config
 **File:** `src/data/siteConfig.ts`
 
-Change brand name, subtitle, watermark, YouTube URL:
+Change brand name, subtitle, watermark, default YouTube URL:
 ```ts
 'tech-notes': {
   brandName: 'Think',
   brandAccent: 'Loud',
   brandSubtitle: 'with Sagar Kumar',
   watermark: 'Think Loud with Sagar Kumar',
-  youtubeUrl: 'https://youtube.com',
+  youtubeUrl: 'https://youtube.com/@yourchannel',  // fallback for all pages
 }
 ```
 
@@ -121,6 +121,36 @@ After updating JSON files, run:
 npm run generate-folders
 ```
 This creates the folder structure in `public/notes/`.
+
+#### YouTube URLs (per-level):
+Each node in the JSON can optionally have a `"youtubeUrl"` field. The YouTube button in the header resolves the URL by walking from the **deepest current node up to root**, using the first `youtubeUrl` it finds. If no node has one, it falls back to `siteConfig.ts`.
+
+**Level 1 — Channel URL** (on a top-level topic like "Java"):
+```json
+{
+  "id": "java",
+  "title": "Java",
+  "youtubeUrl": "https://youtube.com/playlist?list=PLxxxxxx",
+  ...
+}
+```
+
+**Level 2 — Video URL** (on a subtopic like "Introduction to Java"):
+```json
+{
+  "id": "intro-to-java",
+  "title": "Introduction to Java",
+  "youtubeUrl": "https://youtube.com/watch?v=xxxxxx",
+  ...
+}
+```
+
+**Fallback order:**
+1. Current leaf node's `youtubeUrl` (if set)
+2. Parent topic's `youtubeUrl` (if set)
+3. `siteConfig.ts` → `youtubeUrl` (always exists)
+
+This means you only need to set URLs where they differ. A playlist URL on "Java" will automatically apply to all subtopics under it unless a subtopic has its own video URL.
 
 ### Feature Flags
 **File:** `src/canvas/SubTopicTracker.tsx` (top of file)
