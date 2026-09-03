@@ -246,3 +246,65 @@ export function clearStepAnimations(shapeIds: string[]) {
     if (el) clearStepAnimation(el);
   }
 }
+
+// ─── Zoom (camera) ───────────────────────────────────────────────────────────
+
+/**
+ * Zoom: smoothly animate the camera to frame the given shapes with padding.
+ * Returns the camera state before the zoom so it can be restored on rewind.
+ */
+export function applyZoomToShapes(
+  shapeIds: string[],
+  duration: number,
+  editor: any,
+): { x: number; y: number; z: number } | null {
+  if (!editor) return null;
+
+  // Save current camera for rewind
+  const cam = editor.getCamera();
+  const savedCamera = { x: cam.x, y: cam.y, z: cam.z };
+
+  // Get bounds of all shapes in this step
+  const tldrawIds = shapeIds.filter(id => id.includes(':'));
+  if (tldrawIds.length === 0) return savedCamera;
+
+  const shapes = tldrawIds.map((id: string) => editor.getShape(id)).filter(Boolean);
+  if (shapes.length === 0) return savedCamera;
+
+  // Calculate combined bounds
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const shape of shapes) {
+    const bounds = editor.getShapePageBounds(shape.id);
+    if (!bounds) continue;
+    minX = Math.min(minX, bounds.x);
+    minY = Math.min(minY, bounds.y);
+    maxX = Math.max(maxX, bounds.x + bounds.w);
+    maxY = Math.max(maxY, bounds.y + bounds.h);
+  }
+
+  if (minX === Infinity) return savedCamera;
+
+  // Zoom to bounds with padding
+  editor.zoomToBounds(
+    { x: minX, y: minY, w: maxX - minX, h: maxY - minY },
+    {
+      inset: 80,
+      animation: { duration: Math.max(duration, 300), easing: (t: number) => 1 - Math.pow(1 - t, 3) },
+    },
+  );
+
+  return savedCamera;
+}
+
+/**
+ * Rewind zoom: restore the camera to the saved position.
+ */
+export function rewindZoom(
+  savedCamera: { x: number; y: number; z: number },
+  editor: any,
+) {
+  if (!editor || !savedCamera) return;
+  editor.setCamera(savedCamera, {
+    animation: { duration: 300, easing: (t: number) => 1 - Math.pow(1 - t, 3) },
+  });
+}

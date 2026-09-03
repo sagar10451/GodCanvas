@@ -9,7 +9,7 @@ import type { AnimationStep, SubTopicLabel, LessonCanvasData, ShapeAnimationConf
 import AnimationPanel from './AnimationPanel';
 import SubTopicTracker from './SubTopicTracker';
 import { applyIdleAnimation } from './animationEngine';
-import { applyStepAnimation, clearStepAnimations, applyExitAnimation, applyBlinkAnimation, applyMoveAnimation, applyTeleportAnimation, rewindMoveRecords } from './stepAnimations';
+import { applyStepAnimation, clearStepAnimations, applyExitAnimation, applyBlinkAnimation, applyMoveAnimation, applyTeleportAnimation, rewindMoveRecords, applyZoomToShapes, rewindZoom } from './stepAnimations';
 import type { MoveRecord } from './stepAnimations';
 import { usePresentation } from '../data/presentationContext';
 import LaserPointer from '../components/LaserPointer';
@@ -18,6 +18,8 @@ import DiagramToolbar from './diagram/DiagramToolbar';
 import DraggableWidget from './DraggableWidget';
 import NodeCatalog from './diagram/NodeCatalog';
 import { EMPTY_DIAGRAM } from './diagram/diagramTypes';
+import SpotlightOverlay from './SpotlightOverlay';
+import CanvasMinimap from './CanvasMinimap';
 import type { DiagramData } from './diagram/diagramTypes';
 import './diagram/diagramStyles.css';
 import PublicMarkdownEditor from './PublicMarkdownEditor';
@@ -151,6 +153,8 @@ export default function LessonCanvas({
   const [canvasReady, setCanvasReady] = useState(false);
   const [hideLockButton, setHideLockButton] = useState(false);
   const [tldrawCamera, setTldrawCamera] = useState<{ x: number; y: number; z: number } | null>(null);
+  const [spotlightActive, setSpotlightActive] = useState(false);
+  const [showMinimap, setShowMinimap] = useState(true);
 
   // ─── Diagram (React Flow) state ──────────────────────────────────────────
   const [diagramData, setDiagramData] = useState<DiagramData>(
@@ -164,6 +168,7 @@ export default function LessonCanvas({
   const [rfSelectedEdgeIds, setRfSelectedEdgeIds] = useState<string[]>([]);
   const diagramWrapperRef = useRef<HTMLDivElement>(null);
   const moveOriginalPositionsRef = useRef<Record<string, MoveRecord[]>>({});
+  const zoomSavedCamerasRef = useRef<Record<string, { x: number; y: number; z: number }>>({});
 
   const handleRfSelectionChange = useCallback((nodeIds: string[], edgeIds: string[]) => {
     setRfSelectedNodeIds(nodeIds);
@@ -417,6 +422,7 @@ export default function LessonCanvas({
         rewindMoveRecords(records, editor);
       }
       moveOriginalPositionsRef.current = {};
+      zoomSavedCamerasRef.current = {};
       setIsLocked(false);
     } else {
       editor.updateInstanceState({ isReadonly: false });
@@ -425,6 +431,7 @@ export default function LessonCanvas({
         rewindMoveRecords(records, editor);
       }
       moveOriginalPositionsRef.current = {};
+      zoomSavedCamerasRef.current = {};
       setCurrentStep(0);
       applyAnimationState(editor, animationSteps, 0);
       // Re-apply after a frame to catch RF elements that might not be in DOM yet
@@ -549,6 +556,13 @@ export default function LessonCanvas({
         applyStepAnimation(step.shapeIds, step.animation, step.duration);
         break;
       }
+      case 'zoom': {
+        const savedCam = applyZoomToShapes(step.shapeIds, step.duration, editor);
+        if (savedCam) {
+          zoomSavedCamerasRef.current[step.id] = savedCam;
+        }
+        break;
+      }
     }
 
     setCurrentStep(nextStep);
@@ -568,6 +582,12 @@ export default function LessonCanvas({
       delete moveOriginalPositionsRef.current[step.id];
     }
 
+    // Rewind zoom: restore saved camera
+    if (action === 'zoom' && zoomSavedCamerasRef.current[step.id]) {
+      rewindZoom(zoomSavedCamerasRef.current[step.id], editor);
+      delete zoomSavedCamerasRef.current[step.id];
+    }
+
     clearStepAnimations(step.shapeIds);
 
     if (currentStep === 0) {
@@ -585,6 +605,10 @@ export default function LessonCanvas({
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 's') { e.preventDefault(); handleSave(); return; }
       if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'l') { e.preventDefault(); setHideLockButton(h => !h); return; }
+      // Zoom shortcuts (work when unlocked too)
+      if (e.shiftKey && e.key === '!') { e.preventDefault(); editor?.zoomToSelection({ animation: { duration: 300 } }); return; }
+      if (e.shiftKey && e.key === '@') { e.preventDefault(); editor?.zoomToFit({ animation: { duration: 300 } }); return; }
+      if (e.shiftKey && e.key === ')') { e.preventDefault(); editor?.resetZoom(undefined, { animation: { duration: 300 } }); return; }
       if (isLocked) {
         if (e.key === 'ArrowRight') { e.preventDefault(); goNext(); }
         else if (e.key === 'ArrowLeft') { e.preventDefault(); goPrevious(); }
@@ -686,6 +710,26 @@ export default function LessonCanvas({
               </span>
               <button onClick={goNext} disabled={currentStep >= animationSteps.length - 1} className="p-1 rounded bg-blue-900 hover:bg-blue-800 disabled:opacity-30 disabled:cursor-not-allowed transition-all">
                 <ChevronRight className="w-3.5 h-3.5 text-blue-100" />
+              </button>
+            </div>
+          )}
+
+          {/* Spotlight + Minimap toggles (locked mode) */}
+          {isLocked && (
+            <div className="flex items-center gap-1">
+              <button
+                onClick={() => setSpotlightActive(s => !s)}
+                className={`px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all ${spotlightActive ? 'bg-amber-500 text-white' : 'bg-blue-900 text-blue-100 hover:bg-blue-800'}`}
+                title="Toggle spotlight on zoom steps"
+              >
+                💡
+              </button>
+              <button
+                onClick={() => setShowMinimap(m => !m)}
+                className={`px-2 py-1.5 rounded-lg text-[10px] font-medium transition-all ${showMinimap ? 'bg-indigo-500 text-white' : 'bg-blue-900 text-blue-100 hover:bg-blue-800'}`}
+                title="Toggle minimap"
+              >
+                🗺️
               </button>
             </div>
           )}
@@ -970,6 +1014,20 @@ export default function LessonCanvas({
 
         {/* Laser pointer overlay — only in presentation mode with laser tool */}
         {isPresenting && isLocked && presentationTool === 'laser' && <LaserPointer />}
+
+        {/* Spotlight overlay — dims canvas except focused shapes during zoom steps */}
+        <SpotlightOverlay
+          editor={editor}
+          shapeIds={
+            spotlightActive && isLocked && currentStep >= 0 && animationSteps[currentStep]?.action === 'zoom'
+              ? animationSteps[currentStep].shapeIds
+              : []
+          }
+          active={spotlightActive && isLocked}
+        />
+
+        {/* Minimap — overview thumbnail in bottom-right corner */}
+        <CanvasMinimap editor={editor} visible={showMinimap && isLocked} />
       </div>
       </>
       )}

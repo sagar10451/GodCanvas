@@ -53,7 +53,7 @@ export interface ShapeAnimationConfig {
   idle: IdleAnimation;
 }
 
-export type StepAction = 'enter' | 'exit' | 'blink' | 'move' | 'teleport' | 'swap';
+export type StepAction = 'enter' | 'exit' | 'blink' | 'move' | 'teleport' | 'swap' | 'zoom';
 
 export interface AnimationStep {
   id: string;

@@ -26,6 +26,7 @@ const actionOptions: { value: StepAction; label: string; desc: string }[] = [
   { value: 'move', label: 'Move', desc: 'Slide to position' },
   { value: 'teleport', label: 'Teleport', desc: 'Jump to position' },
   { value: 'swap', label: 'Swap', desc: 'Replace shapes' },
+  { value: 'zoom', label: 'Zoom', desc: 'Camera zoom to shapes' },
 ];
 
 const animationTypes: { value: AnimationType; label: string }[] = [
