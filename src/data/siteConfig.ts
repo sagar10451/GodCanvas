@@ -23,7 +23,7 @@ export const sites: Record<string, SiteConfig> = {
   'tech-notes': {
     id: 'tech-notes',
     basePath: '',
-    brandName: 'Dev',
+    brandName: 'dev',
     brandAccent: 'Stack',
     brandSubtitle: 'by Sagar Kumar',
     watermark: 'DevStack by Sagar Kumar',

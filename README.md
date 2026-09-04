@@ -1,4 +1,4 @@
-# GodCanvas
+# devStack
 
 Interactive canvas-based notes platform with step-by-step animations, system design diagrams, code blocks, markdown rendering, and presentation mode.
 
@@ -19,7 +19,9 @@ Interactive canvas-based notes platform with step-by-step animations, system des
 - **16 entrance animations** — Appear, Fade In, Fly In (4 directions), Slide In (4 directions), Zoom In/Out, Pop, Pulse, Bounce
 - **5 reveal animations** — Reveal Left/Right/Top/Bottom, Reveal Center (clip-path based)
 - **7 looping animations** — Float, Shake, Pulse, Bounce, Breathe, Wiggle, Sway (with adjustable speed via duration)
-- **6 step actions** — Enter, Exit, Blink, Move, Teleport, Swap
+- **7 step actions** — None, Enter, Exit, Blink, Move, Teleport, Swap
+- **Camera capture** — any step can optionally capture a camera view (zoom in/out during presentation)
+- **Per-step audio** — attach sound effects to any step with start/end time, loop, and volume control (Web Audio API)
 - **Move** — pick destination by dragging the shape, confirm, it animates to that position
 - **Swap** — one set of shapes exits while another enters simultaneously
 - **Sub-topic progress tracker** — labels with step ranges, auto-cascading, draggable widget
@@ -47,7 +49,7 @@ Interactive canvas-based notes platform with step-by-step animations, system des
 - **Breadcrumb navigation** — auto-generated path trail for nested topics
 
 ### Two Portals
-- **`/`** — "Think Loud with Sagar Kumar" (IT/CS topics)
+- **`/`** — "devStack by Sagar Kumar" (IT/CS topics)
 - **`/10`** — "Chapter Breakdown by Sagar Kumar" (School — Class 10, 12)
 
 ---
@@ -60,17 +62,17 @@ Interactive canvas-based notes platform with step-by-step animations, system des
 Change brand name, subtitle, watermark, default YouTube URL:
 ```ts
 'tech-notes': {
-  brandName: 'Think',
-  brandAccent: 'Loud',
-  brandSubtitle: 'with Sagar Kumar',
-  watermark: 'Think Loud with Sagar Kumar',
+  brandName: 'dev',
+  brandAccent: 'Stack',
+  brandSubtitle: 'by Sagar Kumar',
+  watermark: 'devStack by Sagar Kumar',
   youtubeUrl: 'https://youtube.com/@yourchannel',  // fallback for all pages
 }
 ```
 
 ### Content Tree (Topics & Subtopics)
 **Files:**
-- `src/data/think_loud.json` — IT/CS topics (portal `/`)
+**File:** `src/data/think_loud.json` — IT/CS topics (portal `/`)
 - `src/data/chapter_breakdown.json` — School topics (portal `/10`)
 
 #### Add a new topic:
@@ -200,6 +202,9 @@ Common icons: `BookOpen`, `Coffee`, `Code2`, `GitBranch`, `Brain`, `Cpu`, `Globe
 | Shortcut | Action |
 |----------|--------|
 | `→` / `←` | Next / Previous animation step (locked canvas) |
+| `Shift+1` | Zoom to selected shapes |
+| `Shift+2` | Toggle zoom to fit / reset to 100% |
+| `Shift+0` | Reset zoom to 100% |
 | `Cmd+S` | Manual save |
 | `Cmd+Shift+L` | Hide/show Lock button |
 | `Esc` | Exit fullscreen |
@@ -269,7 +274,7 @@ The Vite plugin (`vite-plugin-canvas-api.ts`) adds these localhost-only endpoint
 These endpoints only exist on the dev server. Production builds ignore them entirely.
 
 ### GitHub Deploy Key
-SSH key at `~/.ssh/godcanvas_key` — used for pushing from the Vite plugin without affecting global git config.
+SSH key at `~/.ssh/godcanvas_key` — used for pushing from the Vite plugin without affecting global git config. Repo: `sagar10451/devStack`.
 
 ---
 
@@ -340,6 +345,7 @@ src/
       diagramTypes.ts        — Node/edge catalogs
       edgeTypes.tsx           — 8 animated edge types
       nodeTypes.tsx           — Custom node renderer with resize
+      ContentNode.tsx         — Markdown RF node (transparent, connectable)
       iconRegistry.tsx        — AWS icon mapping
       diagramStyles.css       — RF-specific styles
   components/
