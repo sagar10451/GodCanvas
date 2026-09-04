@@ -19,10 +19,20 @@ export interface SiteConfig {
   youtubeUrl: string;
 }
 
+/**
+ * Which portal to show.
+ * - Production: set via VITE_PORTAL env variable ('devStack' or 'chapterBreakdown')
+ * - Localhost: not set — both portals available via /devStack and /chapterBreakdown paths
+ */
+const PORTAL_ENV = import.meta.env.VITE_PORTAL as string | undefined;
+const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+
 export const sites: Record<string, SiteConfig> = {
   'tech-notes': {
     id: 'tech-notes',
-    basePath: '/devStack',
+    // On production with VITE_PORTAL=devStack, basePath is '' (root)
+    // On localhost, basePath is '/devStack' (so both portals can coexist)
+    basePath: (PORTAL_ENV === 'devStack' || (!isLocalhost && PORTAL_ENV !== 'chapterBreakdown')) ? '' : '/devStack',
     brandName: 'dev',
     brandAccent: 'Stack',
     brandSubtitle: 'by Sagar Kumar',
@@ -31,7 +41,7 @@ export const sites: Record<string, SiteConfig> = {
   },
   'flowchart-notes': {
     id: 'flowchart-notes',
-    basePath: '/chapterBreakdown',
+    basePath: PORTAL_ENV === 'chapterBreakdown' ? '' : '/chapterBreakdown',
     brandName: 'Chapter',
     brandAccent: 'Breakdown',
     brandSubtitle: 'by Sagar Kumar',
@@ -41,16 +51,18 @@ export const sites: Record<string, SiteConfig> = {
 };
 
 /**
- * Get site config based on current URL path.
- * Returns null for root path (/) — handled by portal picker in App.tsx.
+ * Get site config based on current URL path and VITE_PORTAL env.
+ * - Production: always returns the configured portal (VITE_PORTAL)
+ * - Localhost: returns based on path prefix, null for root
  */
 export function getSiteFromPath(pathname: string): SiteConfig | null {
-  if (pathname.startsWith('/chapterBreakdown')) {
-    return sites['flowchart-notes'];
-  }
-  if (pathname.startsWith('/devStack')) {
-    return sites['tech-notes'];
-  }
+  // Production: single portal mode
+  if (PORTAL_ENV === 'devStack') return sites['tech-notes'];
+  if (PORTAL_ENV === 'chapterBreakdown') return sites['flowchart-notes'];
+
+  // Localhost: path-based portal selection
+  if (pathname.startsWith('/chapterBreakdown')) return sites['flowchart-notes'];
+  if (pathname.startsWith('/devStack')) return sites['tech-notes'];
   return null;
 }
 
