@@ -8,8 +8,8 @@
  */
 
 export const gridColumns: Record<string, number> = {
-  'root': 5,
-  '/java': 5,
+  '/devStack': 5,
+  '/devStack/java': 5,
 };
 
 /**
@@ -30,8 +30,8 @@ export function getGridColumns(path: string): number {
  */
 
 export const countLabels: Record<string, string> = {
-  'root': 'Topics',
-  '/java': 'Topics',
+  '/devStack': 'Topics',
+  '/devStack/java': 'Topics',
 };
 
 /**

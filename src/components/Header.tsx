@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import { Search, BookOpen, Code2, Maximize, Info } from 'lucide-react';
-import { usePortal } from '../data/portalContext';
+import { usePortalSafe } from '../data/portalContext';
 import { usePresentation } from '../data/presentationContext';
 import { findNodeByPath } from '../data/contentTree';
 import { useState } from 'react';
@@ -41,7 +41,7 @@ interface HeaderProps {
 export default function Header({ searchQuery, onSearchChange }: HeaderProps) {
   const { togglePresentation, isPresenting } = usePresentation();
   const [showAbout, setShowAbout] = useState(false);
-  const { site, slugs, content } = usePortal();
+  const { site, slugs, content } = usePortalSafe();
 
   const isTopLevel = slugs.length === 0;
 
@@ -164,8 +164,8 @@ export default function Header({ searchQuery, onSearchChange }: HeaderProps) {
             <div className="space-y-4 text-sm text-gray-600">
               <section>
                 <h3 className="font-semibold text-gray-800 mb-1">Two Portals</h3>
-                <p><b>localhost:5173/</b> — Think Loud with Sagar Kumar (IT/CS topics)</p>
-                <p><b>localhost:5173/10</b> — Chapter Breakdown by Sagar Kumar (School — Class 10, 12)</p>
+                <p><b>localhost:5173/devStack</b> — devStack by Sagar Kumar (IT/CS topics)</p>
+                <p><b>localhost:5173/chapterBreakdown</b> — Chapter Breakdown by Sagar Kumar (School — Class 10, 12)</p>
                 <p>Each portal has its own branding, watermark, and content tree.</p>
                 <p>Navigate between them by changing the URL.</p>
               </section>

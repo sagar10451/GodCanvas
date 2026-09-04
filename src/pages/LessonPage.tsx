@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { usePortal } from '../data/portalContext';
+import { usePortalSafe } from '../data/portalContext';
 import LessonCanvas from '../canvas/LessonCanvas';
 import PublicMarkdownViewer from '../canvas/PublicMarkdownViewer';
 import type { LessonCanvasData, PublicCanvasData } from '../canvas/types';
@@ -15,7 +15,7 @@ interface LessonPageProps {
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 
 export default function LessonPage({ topicSlug, subtopicSlug, topicTitle, subtopicTitle, basePath }: LessonPageProps) {
-  const { site } = usePortal();
+  const { site } = usePortalSafe();
   const [canvasData, setCanvasData] = useState<LessonCanvasData | null>(null);
   const [publicData, setPublicData] = useState<PublicCanvasData | null>(null);
   const [loaded, setLoaded] = useState(false);

@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom';
 import { useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { ChevronRight, Search, ZoomIn } from 'lucide-react';
-import { usePortal } from '../data/portalContext';
+import { usePortalSafe } from '../data/portalContext';
 import { getGridColumns, getCountLabel } from '../data/gridConfig';
 
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
@@ -20,7 +20,7 @@ interface PortalPageProps {
 }
 
 export default function PortalPage({ searchQuery, onSearchChange }: PortalPageProps) {
-  const { site, content, slugs } = usePortal();
+  const { site, content, slugs } = usePortalSafe();
 
   // If no slugs → landing page (show top-level cards)
   if (slugs.length === 0) {

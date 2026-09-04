@@ -22,7 +22,7 @@ export interface SiteConfig {
 export const sites: Record<string, SiteConfig> = {
   'tech-notes': {
     id: 'tech-notes',
-    basePath: '',
+    basePath: '/devStack',
     brandName: 'dev',
     brandAccent: 'Stack',
     brandSubtitle: 'by Sagar Kumar',
@@ -31,7 +31,7 @@ export const sites: Record<string, SiteConfig> = {
   },
   'flowchart-notes': {
     id: 'flowchart-notes',
-    basePath: '/10',
+    basePath: '/chapterBreakdown',
     brandName: 'Chapter',
     brandAccent: 'Breakdown',
     brandSubtitle: 'by Sagar Kumar',
@@ -42,17 +42,21 @@ export const sites: Record<string, SiteConfig> = {
 
 /**
  * Get site config based on current URL path.
+ * Returns null for root path (/) — handled by portal picker in App.tsx.
  */
-export function getSiteFromPath(pathname: string): SiteConfig {
-  if (pathname.startsWith('/10')) {
+export function getSiteFromPath(pathname: string): SiteConfig | null {
+  if (pathname.startsWith('/chapterBreakdown')) {
     return sites['flowchart-notes'];
   }
-  return sites['tech-notes'];
+  if (pathname.startsWith('/devStack')) {
+    return sites['tech-notes'];
+  }
+  return null;
 }
 
 /**
  * Strip the portal base path from a URL to get the content path.
- * e.g. "/10/social-science/history" → "/social-science/history"
+ * e.g. "/chapterBreakdown/social-science/history" → "/social-science/history"
  */
 export function getContentPath(pathname: string, site: SiteConfig): string {
   if (site.basePath && pathname.startsWith(site.basePath)) {

@@ -7,7 +7,7 @@ import { techContent } from './techContent';
 import { flowchartContent } from './flowchartContent';
 
 interface PortalContextValue {
-  site: SiteConfig;
+  site: SiteConfig | null;
   content: ContentNode[];
   /** The path within the portal (basePath stripped) */
   contentPath: string;
@@ -16,7 +16,7 @@ interface PortalContextValue {
 }
 
 const PortalContext = createContext<PortalContextValue>({
-  site: {} as SiteConfig,
+  site: null,
   content: [],
   contentPath: '/',
   slugs: [],
@@ -25,9 +25,18 @@ const PortalContext = createContext<PortalContextValue>({
 export function PortalProvider({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const site = getSiteFromPath(location.pathname);
+
+  if (!site) {
+    // Root path — no portal selected
+    return (
+      <PortalContext.Provider value={{ site: null, content: [], contentPath: '/', slugs: [] }}>
+        {children}
+      </PortalContext.Provider>
+    );
+  }
+
   const contentPath = getContentPath(location.pathname, site);
   const slugs = contentPath.split('/').filter(Boolean);
-
   const content = site.id === 'flowchart-notes' ? flowchartContent : techContent;
 
   return (
@@ -39,4 +48,10 @@ export function PortalProvider({ children }: { children: React.ReactNode }) {
 
 export function usePortal() {
   return useContext(PortalContext);
+}
+
+/** Use inside portal pages where site is guaranteed to be non-null */
+export function usePortalSafe() {
+  const ctx = useContext(PortalContext);
+  return ctx as { site: SiteConfig; content: ContentNode[]; contentPath: string; slugs: string[] };
 }
